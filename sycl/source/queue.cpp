@@ -204,6 +204,7 @@ event queue::submit_impl(std::function<void(handler &)> CGH,
 event queue::submit_impl(std::function<void(handler &)> CGH,
                          const detail::code_location &CodeLoc,
                          bool IsTopCodeLoc) {
+  detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
   return submit_with_event_impl(std::move(CGH), {}, CodeLoc, IsTopCodeLoc);
 }
 

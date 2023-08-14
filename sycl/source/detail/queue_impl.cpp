@@ -575,6 +575,7 @@ void queue_impl::instrumentationEpilog(void *TelemetryEvent, std::string &Name,
 }
 
 void queue_impl::wait(const detail::code_location &CodeLoc) {
+  detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
   (void)CodeLoc;
 #ifdef XPTI_ENABLE_INSTRUMENTATION
   void *TelemetryEvent = nullptr;

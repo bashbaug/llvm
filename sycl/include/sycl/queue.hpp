@@ -23,6 +23,7 @@
 #include <sycl/detail/kernel_desc.hpp>        // for KernelInfo
 #include <sycl/detail/optional.hpp>
 #include <sycl/detail/owner_less_base.hpp> // for OwnerLessBase
+#include <sycl/detail/scope_profiler.h>
 #include <sycl/device.hpp>                 // for device
 #include <sycl/device_selector.hpp>        // for device_selector
 #include <sycl/event.hpp>                  // for event
@@ -2238,6 +2239,7 @@ public:
   /// const KernelType &KernelFunc".
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<1> Range, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, Rest...);
   }
 
@@ -2249,6 +2251,7 @@ public:
   /// const KernelType &KernelFunc".
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<2> Range, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, Rest...);
   }
 
@@ -2260,6 +2263,7 @@ public:
   /// const KernelType &KernelFunc".
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<3> Range, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, Rest...);
   }
 
@@ -2272,6 +2276,7 @@ public:
   /// const KernelType &KernelFunc".
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<1> Range, event DepEvent, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, DepEvent, Rest...);
   }
 
@@ -2284,6 +2289,7 @@ public:
   /// const KernelType &KernelFunc".
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<2> Range, event DepEvent, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, DepEvent, Rest...);
   }
 
@@ -2296,6 +2302,7 @@ public:
   /// const KernelType &KernelFunc".
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<3> Range, event DepEvent, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, DepEvent, Rest...);
   }
 
@@ -2310,6 +2317,7 @@ public:
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<1> Range, const std::vector<event> &DepEvents,
                      RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, DepEvents, Rest...);
   }
 
@@ -2324,6 +2332,7 @@ public:
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<2> Range, const std::vector<event> &DepEvents,
                      RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, DepEvents, Rest...);
   }
 
@@ -2338,6 +2347,7 @@ public:
   template <typename KernelName = detail::auto_name, typename... RestT>
   event parallel_for(range<3> Range, const std::vector<event> &DepEvents,
                      RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(Range, DepEvents, Rest...);
   }
 
@@ -2356,6 +2366,7 @@ public:
   event parallel_for(range<Dim> Range, id<Dim> WorkItemOffset,
                      const std::vector<event> &DepEvents,
                      _KERNELFUNCPARAM(KernelFunc)) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     static_assert(1 <= Dim && Dim <= 3, "Invalid number of dimensions");
     return parallel_for_impl<KernelName>(Range, WorkItemOffset, DepEvents,
                                          KernelFunc);
@@ -2373,6 +2384,7 @@ public:
   __SYCL2020_DEPRECATED("offsets are deprecated in SYCL 2020")
   event parallel_for_impl(range<Dims> Range, id<Dims> WorkItemOffset,
                           _KERNELFUNCPARAM(KernelFunc)) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     // Actual code location needs to be captured from KernelInfo object.
     const detail::code_location CodeLoc = {};
     return submit(
@@ -2396,6 +2408,7 @@ public:
   __SYCL2020_DEPRECATED("offsets are deprecated in SYCL 2020")
   event parallel_for_impl(range<Dims> Range, id<Dims> WorkItemOffset,
                           event DepEvent, _KERNELFUNCPARAM(KernelFunc)) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     // Actual code location needs to be captured from KernelInfo object.
     const detail::code_location CodeLoc = {};
     return submit(
@@ -2422,6 +2435,7 @@ public:
   event parallel_for_impl(range<Dims> Range, id<Dims> WorkItemOffset,
                           const std::vector<event> &DepEvents,
                           _KERNELFUNCPARAM(KernelFunc)) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     // Actual code location needs to be captured from KernelInfo object.
     const detail::code_location CodeLoc = {};
     return submit(
@@ -2447,6 +2461,7 @@ public:
           ext::oneapi::experimental::is_property_list<PropertiesT>::value,
       event>
   parallel_for(nd_range<Dims> Range, PropertiesT Properties, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     constexpr detail::code_location CodeLoc = getCodeLocation<KernelName>();
     detail::tls_code_loc_t TlsCodeLocCapture(CodeLoc);
     return submit(
@@ -2466,6 +2481,7 @@ public:
             typename... RestT>
   std::enable_if_t<detail::AreAllButLastReductions<RestT...>::value, event>
   parallel_for(nd_range<Dims> Range, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for<KernelName>(
         Range, ext::oneapi::experimental::empty_properties_t{}, Rest...);
   }
@@ -2480,6 +2496,7 @@ public:
   template <typename KernelName = detail::auto_name, int Dims,
             typename... RestT>
   event parallel_for(nd_range<Dims> Range, event DepEvent, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     constexpr detail::code_location CodeLoc = getCodeLocation<KernelName>();
     detail::tls_code_loc_t TlsCodeLocCapture(CodeLoc);
     return submit(
@@ -2502,6 +2519,7 @@ public:
             typename... RestT>
   event parallel_for(nd_range<Dims> Range, const std::vector<event> &DepEvents,
                      RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     constexpr detail::code_location CodeLoc = getCodeLocation<KernelName>();
     detail::tls_code_loc_t TlsCodeLocCapture(CodeLoc);
     return submit(
@@ -2900,6 +2918,7 @@ private:
       event>
   parallel_for_impl(range<Dims> Range, PropertiesT Properties,
                     RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     constexpr detail::code_location CodeLoc = getCodeLocation<KernelName>();
     detail::tls_code_loc_t TlsCodeLocCapture(CodeLoc);
     return submit(
@@ -2917,6 +2936,7 @@ private:
   template <typename KernelName, int Dims, typename... RestT>
   std::enable_if_t<detail::AreAllButLastReductions<RestT...>::value, event>
   parallel_for_impl(range<Dims> Range, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(
         Range, ext::oneapi::experimental::empty_properties_t{}, Rest...);
   }
@@ -2934,6 +2954,7 @@ private:
       ext::oneapi::experimental::is_property_list<PropertiesT>::value, event>
   parallel_for_impl(range<Dims> Range, event DepEvent, PropertiesT Properties,
                     RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     constexpr detail::code_location CodeLoc = getCodeLocation<KernelName>();
     detail::tls_code_loc_t TlsCodeLocCapture(CodeLoc);
     return submit(
@@ -2952,6 +2973,7 @@ private:
   /// \param KernelFunc is the Kernel functor or lambda
   template <typename KernelName, int Dims, typename... RestT>
   event parallel_for_impl(range<Dims> Range, event DepEvent, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(
         Range, DepEvent, ext::oneapi::experimental::empty_properties_t{},
         Rest...);
@@ -2971,6 +2993,7 @@ private:
       ext::oneapi::experimental::is_property_list<PropertiesT>::value, event>
   parallel_for_impl(range<Dims> Range, const std::vector<event> &DepEvents,
                     PropertiesT Properties, RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     constexpr detail::code_location CodeLoc = getCodeLocation<KernelName>();
     detail::tls_code_loc_t TlsCodeLocCapture(CodeLoc);
     return submit(
@@ -2992,6 +3015,7 @@ private:
   event parallel_for_impl(range<Dims> Range,
                           const std::vector<event> &DepEvents,
                           RestT &&...Rest) {
+    detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
     return parallel_for_impl<KernelName>(
         Range, DepEvents, ext::oneapi::experimental::empty_properties_t{},
         Rest...);

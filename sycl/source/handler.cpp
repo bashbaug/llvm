@@ -152,6 +152,7 @@ void handler::setHandlerKernelBundle(kernel Kernel) {
 }
 
 event handler::finalize() {
+  detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
   // This block of code is needed only for reduction implementation.
   // It is harmless (does nothing) for everything else.
   if (MIsFinalized)
@@ -197,6 +198,7 @@ event handler::finalize() {
 
   const auto &type = getType();
   if (type == detail::CGType::Kernel) {
+    //detail::ScopeProfiler _prof("handler::finalize if type == detail::CG::Kernel");
     // If there were uses of set_specialization_constant build the kernel_bundle
     std::shared_ptr<detail::kernel_bundle_impl> KernelBundleImpPtr =
         getOrInsertHandlerKernelBundle(/*Insert=*/false);
