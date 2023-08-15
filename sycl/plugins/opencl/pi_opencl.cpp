@@ -356,22 +356,71 @@ pi_result piDeviceGetInfo(pi_device device, pi_device_info paramName,
                           size_t paramValueSize, void *paramValue,
                           size_t *paramValueSizeRet) {
   switch (paramName) {
-    // TODO: Check regularly to see if support in enabled in OpenCL.
-    // Intel GPU EU device-specific information extensions.
-    // Some of the queries are enabled by cl_intel_device_attribute_query
-    // extension, but it's not yet in the Registry.
-  case PI_DEVICE_INFO_PCI_ADDRESS:
-  case PI_DEVICE_INFO_GPU_EU_COUNT:
+  case PI_DEVICE_INFO_PCI_ADDRESS: {
+    cl_device_pci_bus_info_khr pci_bus_info;
+    cl_int result =
+        clGetDeviceInfo(cast<cl_device_id>(device), CL_DEVICE_PCI_BUS_INFO_KHR,
+                        sizeof(pci_bus_info), &pci_bus_info, nullptr);
+    if (result == CL_SUCCESS) {
+      char pci_bus_info_string[13];
+      if (paramValue) {
+        if (paramValueSize < sizeof(pci_bus_info_string))
+          return static_cast<pi_result>(CL_INVALID_VALUE);
+
+        std::snprintf(pci_bus_info_string, sizeof(pci_bus_info_string),
+                      "%04x:%02x:%02x.%01x", pci_bus_info.pci_domain,
+                      pci_bus_info.pci_bus, pci_bus_info.pci_device,
+                      pci_bus_info.pci_function);
+        std::memcpy(paramValue, pci_bus_info_string,
+                    sizeof(pci_bus_info_string));
+      }
+
+      if (paramValueSizeRet)
+        *paramValueSizeRet = sizeof(pci_bus_info_string);
+    }
+    return static_cast<pi_result>(result);
+  }
+  case PI_DEVICE_INFO_GPU_EU_COUNT: {
+    // There is no OpenCL query for the total EU count, however for devices
+    // that support the EU_COUNT_PER_SUBSLICE query we can assume that the
+    // MAX_COMPUTE_UNITS query returns the total number of EUs.
+    cl_uint euCountPerSubslice;
+    cl_int result = clGetDeviceInfo(
+        cast<cl_device_id>(device), CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL,
+        sizeof(euCountPerSubslice), &euCountPerSubslice, nullptr);
+    if (result == CL_SUCCESS) {
+      result = clGetDeviceInfo(cast<cl_device_id>(device),
+                               CL_DEVICE_MAX_COMPUTE_UNITS, paramValueSize,
+                               paramValue, paramValueSizeRet);
+    }
+    return static_cast<pi_result>(result);
+  }
+  case PI_DEVICE_INFO_GPU_SLICES: {
+    cl_int result =
+        clGetDeviceInfo(cast<cl_device_id>(device), CL_DEVICE_NUM_SLICES_INTEL,
+                        paramValueSize, paramValue, paramValueSizeRet);
+    return static_cast<pi_result>(result);
+  }
+  case PI_DEVICE_INFO_GPU_SUBSLICES_PER_SLICE: {
+    cl_int result = clGetDeviceInfo(
+        cast<cl_device_id>(device), CL_DEVICE_NUM_SUB_SLICES_PER_SLICE_INTEL,
+        paramValueSize, paramValue, paramValueSizeRet);
+    return static_cast<pi_result>(result);
+  }
+  case PI_DEVICE_INFO_GPU_EU_COUNT_PER_SUBSLICE: {
+    cl_int result = clGetDeviceInfo(
+        cast<cl_device_id>(device), CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL,
+        paramValueSize, paramValue, paramValueSizeRet);
+    return static_cast<pi_result>(result);
+  }
+  case PI_DEVICE_INFO_GPU_HW_THREADS_PER_EU: {
+    cl_int result = clGetDeviceInfo(
+        cast<cl_device_id>(device), CL_DEVICE_NUM_THREADS_PER_EU_INTEL,
+        paramValueSize, paramValue, paramValueSizeRet);
+    return static_cast<pi_result>(result);
+  }
   case PI_DEVICE_INFO_GPU_EU_SIMD_WIDTH:
-  case PI_DEVICE_INFO_GPU_SLICES:
-  case PI_DEVICE_INFO_GPU_SUBSLICES_PER_SLICE:
-  case PI_DEVICE_INFO_GPU_EU_COUNT_PER_SUBSLICE:
-  case PI_DEVICE_INFO_GPU_HW_THREADS_PER_EU:
   case PI_DEVICE_INFO_MAX_MEM_BANDWIDTH:
-    // TODO: Check if device UUID extension is enabled in OpenCL.
-    // For details about Intel UUID extension, see
-    // sycl/doc/extensions/supported/sycl_ext_intel_device_info.md
-  case PI_DEVICE_INFO_UUID:
     return PI_ERROR_INVALID_VALUE;
   case PI_EXT_DEVICE_INFO_ATOMIC_MEMORY_ORDER_CAPABILITIES: {
     // This query is missing before OpenCL 3.0
