@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -58,7 +59,7 @@ public:
     TimerWindows() {
         LARGE_INTEGER freq;
         QueryPerformanceFrequency(&freq);
-        m_Frequency = freq.QuadPart;
+        m_frequency = freq.QuadPart;
     }
 
     inline uint64_t ticks() {
@@ -80,15 +81,11 @@ public:
         return tick_delta * 1000000000 / m_frequency;
     }
 
-//#if (defined(__x86_64_) || defined(__i386__) || defined(_i386))
-//  uint64_t clockticks() { return __rdtsc(); }
-//#else
-//  inline uint64_t clockticks() { return clock(); }
-//#endif
-
 private:
     uint64_t m_frequency;
 };
+
+using Timer = TimerWindows;
 
 #elif defined(__linux__)
 
@@ -119,21 +116,16 @@ public:
     inline uint64_t ticks_to_ns(uint64_t tick_delta) {
         return tick_delta;
     }
-
-//#if defined(__x86_64_) || defined(__i386__) || defined(_i386)
-//  inline uint64_t clockticks() {
-//    unsigned int lo, hi;
-//    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-//    return ((uint64_t)hi << 32) | lo;
-//  }
-//#else
-//  inline uint64_t clockticks() { return clock(); }
-//#endif
 };
+
+using Timer = TimerLinux;
+
+#else
+
+using Timer = TimerChrono;
 
 #endif
 
-using Timer = TimerLinux;
 inline Timer& getTimer()
 {
     static Timer timer;
@@ -151,73 +143,27 @@ public:
 
         if( !m_HostTimingStatsMap.empty() )
         {
+            uint64_t    totalTotalNS = 0;
+            size_t      longestName = 32;
+
             os << std::endl << "Call Profiling Results:" << std::endl;
 
-#if 0
-            std::vector<std::string> keys;
-            keys.reserve(m_HostTimingStatsMap.size());
+            // Move data from the unordered map to an ordered map for better reporting.
+            typedef std::map<std::string, SHostTimingStats>COrderedHostTimingStatsMap;
+            COrderedHostTimingStatsMap stats;
 
-            uint64_t    totalTotalNS = 0;
-            size_t      longestName = 32;
-
-            CHostTimingStatsMap::const_iterator i = m_HostTimingStatsMap.begin();
-            while( i != m_HostTimingStatsMap.end() )
+            for (const auto& i : m_HostTimingStatsMap)
             {
-                const std::string& name = (*i).first;
-                const SHostTimingStats& hostTimingStats = (*i).second;
-
-                if( !name.empty() )
-                {
-                    keys.push_back(name);
-                    totalTotalNS += hostTimingStats.TotalNS;
-                    longestName = std::max< size_t >( name.length(), longestName );
-                }
-
-                ++i;
-            }
-
-            std::sort(keys.begin(), keys.end());
-
-            os << std::endl << "Total Time (ns): " << totalTotalNS << std::endl;
-
-            os << std::endl
-                << std::right << std::setw(longestName) << "Function Name" << delimiter << ' '
-                << std::right << std::setw( 6) << "Calls" <<  << delimiter << ' '
-                << std::right << std::setw(13) << "Time (ns)" <<  << delimiter << ' '
-                << std::right << std::setw( 8) << "Time (%)" <<  << delimiter << ' '
-                << std::right << std::setw(13) << "Average (ns)" <<  << delimiter << ' '
-                << std::right << std::setw(13) << "Min (ns)" <<  << delimiter << ' '
-                << std::right << std::setw(13) << "Max (ns)" << std::endl;
-
-            for( const auto& name : keys )
-            {
-                const SHostTimingStats& hostTimingStats = m_HostTimingStatsMap.at(name);
-
-                os << std::right << std::setw(longestName) << name << delimiter << ' '
-                    << std::right << std::setw( 6) << hostTimingStats.NumberOfCalls << delimiter << ' '
-                    << std::right << std::setw(13) << hostTimingStats.TotalNS << delimiter << ' '
-                    << std::right << std::setw( 7) << std::fixed << std::setprecision(2) << hostTimingStats.TotalNS * 100.0f / totalTotalNS << '%' << delimiter << ' '
-                    << std::right << std::setw(13) << hostTimingStats.TotalNS / hostTimingStats.NumberOfCalls << delimiter << ' '
-                    << std::right << std::setw(13) << hostTimingStats.MinNS << delimiter << ' '
-                    << std::right << std::setw(13) << hostTimingStats.MaxNS << std::endl;
-            }
-#else
-            uint64_t    totalTotalNS = 0;
-            size_t      longestName = 32;
-
-            CHostTimingStatsMap::const_iterator i = m_HostTimingStatsMap.begin();
-            while( i != m_HostTimingStatsMap.end() )
-            {
-                const std::string name = tidyup((*i).first);
-                const SHostTimingStats& hostTimingStats = (*i).second;
+                const std::string& name = tidyup(i.first);
+                const SHostTimingStats& hostTimingStats = i.second;
 
                 if( !name.empty() )
                 {
                     totalTotalNS += hostTimingStats.TotalNS;
                     longestName = std::max< size_t >( name.length(), longestName );
-                }
 
-                ++i;
+                    stats[name] = hostTimingStats;
+                }
             }
 
             os << std::endl << "Total Time (ns): " << totalTotalNS << std::endl;
@@ -232,11 +178,11 @@ public:
                 << std::right << std::setw(13) << "Min (ns)" << delimiter << ' '
                 << std::right << std::setw(13) << "Max (ns)" << std::endl;
 
-            i = m_HostTimingStatsMap.begin();
-            while( i != m_HostTimingStatsMap.end() )
+            // Now report the data from the ordered map.
+            for (const auto& i : stats)
             {
-                const std::string name = tidyup((*i).first);
-                const SHostTimingStats& hostTimingStats = (*i).second;
+                const std::string name = i.first;
+                const SHostTimingStats& hostTimingStats = i.second;
 
                 os << std::right << std::setw(longestName) << name << delimiter << ' '
                     << std::right << std::setw( 8) << hostTimingStats.NumberOfUnfilteredCalls << delimiter << ' '
@@ -246,10 +192,7 @@ public:
                     << std::right << std::setw(13) << hostTimingStats.TotalNS / (hostTimingStats.NumberOfCalls ? hostTimingStats.NumberOfCalls : 1) << delimiter << ' '
                     << std::right << std::setw(13) << (hostTimingStats.NumberOfCalls ? hostTimingStats.MinNS : 0) << delimiter << ' '
                     << std::right << std::setw(13) << hostTimingStats.MaxNS << std::endl;
-
-                ++i;
             }
-#endif
         }
     }
 
@@ -305,7 +248,11 @@ private:
         uint64_t    TotalNS;
     };
 
+#if defined(USE_STRING_KEYS)
+    typedef std::unordered_map<std::string, SHostTimingStats>   CHostTimingStatsMap;
+#else
     typedef std::unordered_map<const char*, SHostTimingStats>   CHostTimingStatsMap;
+#endif // defined(USE_STRING_KEYS)
     CHostTimingStatsMap  m_HostTimingStatsMap;
 };
 
