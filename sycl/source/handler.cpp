@@ -152,7 +152,7 @@ void handler::setHandlerKernelBundle(kernel Kernel) {
 }
 
 event handler::finalize() {
-  detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
+  //detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
   // This block of code is needed only for reduction implementation.
   // It is harmless (does nothing) for everything else.
   if (MIsFinalized)

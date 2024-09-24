@@ -169,7 +169,7 @@ public:
             os << std::endl << "Total Time (ns): " << totalTotalNS << std::endl;
 
             os << std::endl
-                << std::right << std::setw(longestName) << "Function Name" << delimiter << ' '
+                << std::left << std::setw(longestName) << "Function Name" << delimiter << ' '
                 << std::right << std::setw( 8) << "NumCalls" << delimiter << ' '
                 << std::right << std::setw( 9) << "FiltCalls" << delimiter << ' '
                 << std::right << std::setw(13) << "Time (ns)" << delimiter << ' '
@@ -184,7 +184,7 @@ public:
                 const std::string name = i.first;
                 const SHostTimingStats& hostTimingStats = i.second;
 
-                os << std::right << std::setw(longestName) << name << delimiter << ' '
+                os << std::left << std::setw(longestName) << name << delimiter << ' '
                     << std::right << std::setw( 8) << hostTimingStats.NumberOfUnfilteredCalls << delimiter << ' '
                     << std::right << std::setw( 9) << hostTimingStats.NumberOfCalls << delimiter << ' '
                     << std::right << std::setw(13) << hostTimingStats.TotalNS << delimiter << ' '

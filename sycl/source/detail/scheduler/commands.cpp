@@ -2434,7 +2434,7 @@ static ur_result_t SetKernelParamsAndLaunch(
     bool IsCooperative, bool KernelUsesClusterLaunch,
     uint32_t WorkGroupMemorySize, const RTDeviceBinaryImage *BinImage,
     const std::string &KernelName) {
-  detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
+  //detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
   assert(Queue && "Kernel submissions should have an associated queue");
   const AdapterPtr &Adapter = Queue->getAdapter();
 
@@ -2717,7 +2717,7 @@ void enqueueImpKernel(
     ur_kernel_cache_config_t KernelCacheConfig, const bool KernelIsCooperative,
     const bool KernelUsesClusterLaunch, const size_t WorkGroupMemorySize,
     const RTDeviceBinaryImage *BinImage) {
-  detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
+  //detail::ScopeProfiler _prof(__PRETTY_FUNCTION__);
   assert(Queue && "Kernel submissions should have an associated queue");
   // Run OpenCL kernel
   auto ContextImpl = Queue->getContextImplPtr();
@@ -2736,7 +2736,7 @@ void enqueueImpKernel(
   // and can therefore not be looked up, but since they are self-contained
   // they can simply be launched directly.
   if (KernelBundleImplPtr && !KernelBundleImplPtr->isInterop()) {
-    detail::ScopeProfiler _prof("enqueueImpKernel KernelBundleImplPtr && !KernelBundleImplPtr->isInterop");
+    //detail::ScopeProfiler _prof("enqueueImpKernel KernelBundleImplPtr && !KernelBundleImplPtr->isInterop");
     kernel_id KernelID =
         detail::ProgramManager::getInstance().getSYCLKernelID(KernelName);
     kernel SyclKernel =
@@ -2752,7 +2752,7 @@ void enqueueImpKernel(
     EliminatedArgMask = SyclKernelImpl->getKernelArgMask();
     KernelMutex = SyclKernelImpl->getCacheMutex();
   } else if (nullptr != MSyclKernel) {
-    detail::ScopeProfiler _prof("enqueueImpKernel nullptr != MSyclKernel");
+    //detail::ScopeProfiler _prof("enqueueImpKernel nullptr != MSyclKernel");
     assert(MSyclKernel->get_info<info::kernel::context>() ==
            Queue->get_context());
     Kernel = MSyclKernel->getHandleRef();
@@ -2767,7 +2767,7 @@ void enqueueImpKernel(
     KernelMutex = &MSyclKernel->getNoncacheableEnqueueMutex();
     EliminatedArgMask = MSyclKernel->getKernelArgMask();
   } else {
-    detail::ScopeProfiler _prof("enqueueImpKernel else getOrCreateKernel");
+    //detail::ScopeProfiler _prof("enqueueImpKernel else getOrCreateKernel");
     std::tie(Kernel, KernelMutex, EliminatedArgMask, Program) =
         detail::ProgramManager::getInstance().getOrCreateKernel(
             ContextImpl, DeviceImpl, KernelName, NDRDesc);
@@ -2793,7 +2793,7 @@ void enqueueImpKernel(
 
   ur_result_t Error = UR_RESULT_SUCCESS;
   {
-    detail::ScopeProfiler _prof("enqueueImpKernel mutex SetKernelParamsAndLaunch");
+    //detail::ScopeProfiler _prof("enqueueImpKernel mutex SetKernelParamsAndLaunch");
     // When KernelMutex is null, this means that in-memory caching is
     // disabled, which means that kernel object is not shared, so no locking
     // is necessary.

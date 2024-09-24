@@ -166,7 +166,7 @@ public:
   sycl::detail::pi::PiResult call_nocheck(ArgsT... Args) const {
     sycl::detail::pi::PiFuncInfo<PiApiOffset> PiCallInfo;
 #ifdef XPTI_ENABLE_INSTRUMENTATION
-    detail::ScopeProfiler _prof(PiCallInfo.getFuncName());
+    ////detail::ScopeProfiler _prof(PiCallInfo.getFuncName());
     bool CorrelationIDAvailable = false, CorrelationIDWithArgsAvailable = false;
     // Emit a function_begin trace for the PI API before the call is executed.
     // If arguments need to be captured, then a data structure can be sent in
