@@ -12,6 +12,7 @@
 #include <detail/ur.hpp>
 #include <sycl/detail/common.hpp>
 #include <sycl/detail/iostream_proxy.hpp>
+#include <sycl/detail/scope_profiler.h>
 #include <sycl/detail/type_traits.hpp>
 
 #include <ur_api.h>
@@ -127,6 +128,7 @@ public:
     ur_result_t R = UR_RESULT_SUCCESS;
     if (!adapterReleased) {
       detail::UrFuncInfo<UrApiOffset> UrApiInfo;
+      ScopeProfiler prof(UrApiInfo.getFuncName());
       auto F = UrApiInfo.getFuncPtr(&UrFuncPtrs);
       R = F(Args...);
     }
