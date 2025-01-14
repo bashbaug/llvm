@@ -1,7 +1,7 @@
 :DeviceBarrierINTEL: DeviceBarrierINTEL
-:DeviceBarrierINTEL_token: AAAA
+:DeviceBarrierINTEL_token: 6185
 :DeviceBarrierValidINTEL: DeviceBarrierValidINTEL
-:DeviceBarrierValidINTEL_token: BBBB
+:DeviceBarrierValidINTEL_token: 6186
 
 = SPV_INTEL_device_barrier
 
@@ -47,8 +47,8 @@ us know!
 
 [width="40%",cols="25,25"]
 |========================================
-| Last Modified Date | {docdate}
-| Revision           | B
+| Last Modified Date | 2025-01-13
+| Revision           | C
 |========================================
 
 == Dependencies
@@ -111,8 +111,7 @@ instruction.
 . Do we really need this SPIR-V extension?
 +
 --
-*RESOLVED*: Yes, see this Khronos GitLab issue:
-https://gitlab.khronos.org/spirv/SPIR-V/-/issues/746
+*RESOLVED*: Yes, see the internal Khronos SPIR-V issue 746.
 
 Note, since this issue was filed we have also added the
 *{DeviceBarrierValidINTEL}* *BuiltIn* to this extension.
@@ -146,5 +145,6 @@ function as a synonym for a non-split device barrier.
 |========================================
 |Rev|Date|Author|Changes
 |A|2023-07-11|Ben Ashbaugh|*Initial internal revision*
-|B|2023-08-11|Ben Ashbauhg|Added *{DeviceBarrierValidINTEL}* *BuiltIn*.
+|B|2023-08-11|Ben Ashbaugh|Added *{DeviceBarrierValidINTEL}* *BuiltIn*.
+|C|2025-01-13|Ben Ashbaugh|Assigned enums.
 |========================================
