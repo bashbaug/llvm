@@ -64,7 +64,8 @@ void setCuMemAdvise(CUdeviceptr DevPtr, size_t Size,
       };
   for (auto &FlagPair : URToCUMemAdviseDeviceFlagsMap) {
     if (URAdviceFlags & FlagPair.first) {
-      UR_CHECK_ERROR(cuMemAdvise(DevPtr, Size, FlagPair.second, Device));
+      CUmemLocation loc{CU_MEM_LOCATION_TYPE_DEVICE, Device};
+      UR_CHECK_ERROR(cuMemAdvise(DevPtr, Size, FlagPair.second, loc));
     }
   }
 
@@ -82,7 +83,8 @@ void setCuMemAdvise(CUdeviceptr DevPtr, size_t Size,
 
   for (auto &FlagPair : URToCUMemAdviseHostFlagsMap) {
     if (URAdviceFlags & FlagPair.first) {
-      UR_CHECK_ERROR(cuMemAdvise(DevPtr, Size, FlagPair.second, CU_DEVICE_CPU));
+      CUmemLocation loc{CU_MEM_LOCATION_TYPE_HOST, 0};
+      UR_CHECK_ERROR(cuMemAdvise(DevPtr, Size, FlagPair.second, loc));
     }
   }
 
@@ -1550,8 +1552,9 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMPrefetch(
       return UR_RESULT_SUCCESS;
     }
 
+    CUmemLocation loc{CU_MEM_LOCATION_TYPE_DEVICE, Device->get()};
     UR_CHECK_ERROR(
-        cuMemPrefetchAsync((CUdeviceptr)pMem, size, Device->get(), CuStream));
+        cuMemPrefetchAsync((CUdeviceptr)pMem, size, loc, 0, CuStream));
   } catch (ur_result_t Err) {
     return Err;
   }
@@ -1620,15 +1623,16 @@ urEnqueueUSMAdvise(ur_queue_handle_t hQueue, const void *pMem, size_t size,
     }
 
     if (advice & UR_USM_ADVICE_FLAG_DEFAULT) {
+      CUmemLocation loc{CU_MEM_LOCATION_TYPE_DEVICE, hQueue->getDevice()->get()};
       UR_CHECK_ERROR(cuMemAdvise((CUdeviceptr)pMem, size,
                                  CU_MEM_ADVISE_UNSET_READ_MOSTLY,
-                                 hQueue->getDevice()->get()));
+                                 loc));
       UR_CHECK_ERROR(cuMemAdvise((CUdeviceptr)pMem, size,
                                  CU_MEM_ADVISE_UNSET_PREFERRED_LOCATION,
-                                 hQueue->getDevice()->get()));
+                                 loc));
       UR_CHECK_ERROR(cuMemAdvise((CUdeviceptr)pMem, size,
                                  CU_MEM_ADVISE_UNSET_ACCESSED_BY,
-                                 hQueue->getDevice()->get()));
+                                 loc));
     } else {
       setCuMemAdvise((CUdeviceptr)pMem, size, advice,
                      hQueue->getDevice()->get());

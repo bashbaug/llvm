@@ -112,30 +112,56 @@ urUSMHostAlloc(ur_context_handle_t Context, const ur_usm_desc_t *pUSMDesc,
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 
-  std::vector<cl_mem_properties_intel> AllocProperties;
-  if (pUSMDesc && pUSMDesc->pNext) {
-    UR_RETURN_ON_FAILURE(usmDescToCLMemProperties(
-        static_cast<const ur_base_desc_t *>(pUSMDesc->pNext), AllocProperties));
-  }
+  auto Platform = Context->getPlatform();
+  if (Platform->UseUnifiedSVM && Platform->clSVMAllocWithPropertiesKHR &&
+      Platform->HostSVMTypeIndex >= 0) {
+    auto FuncPtr = Platform->clSVMAllocWithPropertiesKHR;
+    auto SVMTypeIndex = Platform->HostSVMTypeIndex;
 
-  // First we need to look up the function pointer
-  clHostMemAllocINTEL_fn FuncPtr = nullptr;
-  cl_context CLContext = Context->CLContext;
-  if (auto UrResult = cl_ext::getExtFuncFromContext<clHostMemAllocINTEL_fn>(
-          CLContext, ur::cl::getAdapter()->fnCache.clHostMemAllocINTELCache,
-          cl_ext::HostMemAllocName, &FuncPtr)) {
-    return UrResult;
-  }
-
-  if (FuncPtr) {
-    cl_int ClResult = CL_SUCCESS;
-    Ptr = FuncPtr(CLContext,
-                  AllocProperties.empty() ? nullptr : AllocProperties.data(),
-                  size, Alignment, &ClResult);
-    if (ClResult == CL_INVALID_BUFFER_SIZE) {
-      return UR_RESULT_ERROR_INVALID_USM_SIZE;
+    std::vector<cl_svm_alloc_properties_khr> props;
+    if (Alignment) {
+      props.push_back(CL_SVM_ALLOC_ALIGNMENT_KHR);
+      props.push_back(Alignment);
     }
-    CL_RETURN_ON_FAILURE(ClResult);
+    if (!props.empty()) {
+      props.push_back(0);
+    }
+
+    if (FuncPtr) {
+      cl_int ClResult = CL_SUCCESS;
+      Ptr = FuncPtr(Context->CLContext, props.empty() ? nullptr : props.data(),
+                    SVMTypeIndex, size, &ClResult);
+      if (ClResult == CL_INVALID_BUFFER_SIZE) {
+        return UR_RESULT_ERROR_INVALID_USM_SIZE;
+      }
+      CL_RETURN_ON_FAILURE(ClResult);
+    }
+  } else {
+    clHostMemAllocINTEL_fn FuncPtr = nullptr;
+    cl_context CLContext = Context->CLContext;
+    if (auto UrResult = cl_ext::getExtFuncFromContext<clHostMemAllocINTEL_fn>(
+            CLContext, ur::cl::getAdapter()->fnCache.clHostMemAllocINTELCache,
+            cl_ext::HostMemAllocName, &FuncPtr)) {
+      return UrResult;
+    }
+
+    std::vector<cl_mem_properties_intel> AllocProperties;
+    if (pUSMDesc && pUSMDesc->pNext) {
+      UR_RETURN_ON_FAILURE(usmDescToCLMemProperties(
+          static_cast<const ur_base_desc_t *>(pUSMDesc->pNext),
+          AllocProperties));
+    }
+
+    if (FuncPtr) {
+      cl_int ClResult = CL_SUCCESS;
+      Ptr = FuncPtr(CLContext,
+                    AllocProperties.empty() ? nullptr : AllocProperties.data(),
+                    size, Alignment, &ClResult);
+      if (ClResult == CL_INVALID_BUFFER_SIZE) {
+        return UR_RESULT_ERROR_INVALID_USM_SIZE;
+      }
+      CL_RETURN_ON_FAILURE(ClResult);
+    }
   }
 
   *ppMem = Ptr;
@@ -160,30 +186,62 @@ urUSMDeviceAlloc(ur_context_handle_t Context, ur_device_handle_t hDevice,
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 
-  std::vector<cl_mem_properties_intel> AllocProperties;
-  if (pUSMDesc && pUSMDesc->pNext) {
-    UR_RETURN_ON_FAILURE(usmDescToCLMemProperties(
-        static_cast<const ur_base_desc_t *>(pUSMDesc->pNext), AllocProperties));
-  }
+  auto Platform = Context->getPlatform();
+  if (Platform->UseUnifiedSVM &&
+      Platform->clSVMAllocWithPropertiesKHR &&
+      Platform->DeviceSVMTypeIndex >= 0) {
+    auto FuncPtr = Platform->clSVMAllocWithPropertiesKHR;
+    auto SVMTypeIndex = Platform->DeviceSVMTypeIndex;
 
-  // First we need to look up the function pointer
-  clDeviceMemAllocINTEL_fn FuncPtr = nullptr;
-  cl_context CLContext = Context->CLContext;
-  if (auto UrResult = cl_ext::getExtFuncFromContext<clDeviceMemAllocINTEL_fn>(
-          CLContext, ur::cl::getAdapter()->fnCache.clDeviceMemAllocINTELCache,
-          cl_ext::DeviceMemAllocName, &FuncPtr)) {
-    return UrResult;
-  }
-
-  if (FuncPtr) {
-    cl_int ClResult = CL_SUCCESS;
-    Ptr = FuncPtr(CLContext, hDevice->CLDevice,
-                  AllocProperties.empty() ? nullptr : AllocProperties.data(),
-                  size, Alignment, &ClResult);
-    if (ClResult == CL_INVALID_BUFFER_SIZE) {
-      return UR_RESULT_ERROR_INVALID_USM_SIZE;
+    std::vector<cl_svm_alloc_properties_khr> props;
+    if (hDevice) {
+      props.push_back(CL_SVM_ALLOC_ASSOCIATED_DEVICE_HANDLE_KHR);
+      props.push_back(
+          reinterpret_cast<cl_svm_alloc_properties_khr>(hDevice->CLDevice));
     }
-    CL_RETURN_ON_FAILURE(ClResult);
+    if (Alignment) {
+      props.push_back(CL_SVM_ALLOC_ALIGNMENT_KHR);
+      props.push_back(Alignment);
+    }
+    if (!props.empty()) {
+      props.push_back(0);
+    }
+
+    if (FuncPtr) {
+      cl_int ClResult = CL_SUCCESS;
+      Ptr = FuncPtr(Context->CLContext, props.empty() ? nullptr : props.data(),
+                    SVMTypeIndex, size, &ClResult);
+      if (ClResult == CL_INVALID_BUFFER_SIZE) {
+        return UR_RESULT_ERROR_INVALID_USM_SIZE;
+      }
+      CL_RETURN_ON_FAILURE(ClResult);
+    }
+  } else {
+    clDeviceMemAllocINTEL_fn FuncPtr = nullptr;
+    cl_context CLContext = Context->CLContext;
+    if (auto UrResult = cl_ext::getExtFuncFromContext<clDeviceMemAllocINTEL_fn>(
+            CLContext, ur::cl::getAdapter()->fnCache.clDeviceMemAllocINTELCache,
+            cl_ext::DeviceMemAllocName, &FuncPtr)) {
+      return UrResult;
+    }
+
+    std::vector<cl_mem_properties_intel> AllocProperties;
+    if (pUSMDesc && pUSMDesc->pNext) {
+      UR_RETURN_ON_FAILURE(usmDescToCLMemProperties(
+          static_cast<const ur_base_desc_t *>(pUSMDesc->pNext),
+          AllocProperties));
+    }
+
+    if (FuncPtr) {
+      cl_int ClResult = CL_SUCCESS;
+      Ptr = FuncPtr(CLContext, hDevice->CLDevice,
+                    AllocProperties.empty() ? nullptr : AllocProperties.data(),
+                    size, Alignment, &ClResult);
+      if (ClResult == CL_INVALID_BUFFER_SIZE) {
+        return UR_RESULT_ERROR_INVALID_USM_SIZE;
+      }
+      CL_RETURN_ON_FAILURE(ClResult);
+    }
   }
 
   *ppMem = Ptr;
@@ -208,30 +266,62 @@ urUSMSharedAlloc(ur_context_handle_t Context, ur_device_handle_t hDevice,
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 
-  std::vector<cl_mem_properties_intel> AllocProperties;
-  if (pUSMDesc && pUSMDesc->pNext) {
-    UR_RETURN_ON_FAILURE(usmDescToCLMemProperties(
-        static_cast<const ur_base_desc_t *>(pUSMDesc->pNext), AllocProperties));
-  }
+  auto Platform = Context->getPlatform();
+  if (Platform->UseUnifiedSVM &&
+      Platform->clSVMAllocWithPropertiesKHR &&
+      Platform->SingleDeviceSharedSVMTypeIndex >= 0) {
+    auto FuncPtr = Platform->clSVMAllocWithPropertiesKHR;
+    auto SVMTypeIndex = Platform->SingleDeviceSharedSVMTypeIndex;
 
-  // First we need to look up the function pointer
-  clSharedMemAllocINTEL_fn FuncPtr = nullptr;
-  cl_context CLContext = Context->CLContext;
-  if (auto UrResult = cl_ext::getExtFuncFromContext<clSharedMemAllocINTEL_fn>(
-          CLContext, ur::cl::getAdapter()->fnCache.clSharedMemAllocINTELCache,
-          cl_ext::SharedMemAllocName, &FuncPtr)) {
-    return UrResult;
-  }
-
-  if (FuncPtr) {
-    cl_int ClResult = CL_SUCCESS;
-    Ptr = FuncPtr(CLContext, hDevice->CLDevice,
-                  AllocProperties.empty() ? nullptr : AllocProperties.data(),
-                  size, Alignment, static_cast<cl_int *>(&ClResult));
-    if (ClResult == CL_INVALID_BUFFER_SIZE) {
-      return UR_RESULT_ERROR_INVALID_USM_SIZE;
+    std::vector<cl_svm_alloc_properties_khr> props;
+    if (hDevice) {
+      props.push_back(CL_SVM_ALLOC_ASSOCIATED_DEVICE_HANDLE_KHR);
+      props.push_back(
+          reinterpret_cast<cl_svm_alloc_properties_khr>(hDevice->CLDevice));
     }
-    CL_RETURN_ON_FAILURE(ClResult);
+    if (Alignment) {
+      props.push_back(CL_SVM_ALLOC_ALIGNMENT_KHR);
+      props.push_back(Alignment);
+    }
+    if (!props.empty()) {
+      props.push_back(0);
+    }
+
+    if (FuncPtr) {
+      cl_int ClResult = CL_SUCCESS;
+      Ptr = FuncPtr(Context->CLContext, props.empty() ? nullptr : props.data(),
+                    SVMTypeIndex, size, &ClResult);
+      if (ClResult == CL_INVALID_BUFFER_SIZE) {
+        return UR_RESULT_ERROR_INVALID_USM_SIZE;
+      }
+      CL_RETURN_ON_FAILURE(ClResult);
+    }
+  } else {
+    clSharedMemAllocINTEL_fn FuncPtr = nullptr;
+    cl_context CLContext = Context->CLContext;
+    if (auto UrResult = cl_ext::getExtFuncFromContext<clSharedMemAllocINTEL_fn>(
+            CLContext, ur::cl::getAdapter()->fnCache.clSharedMemAllocINTELCache,
+            cl_ext::SharedMemAllocName, &FuncPtr)) {
+      return UrResult;
+    }
+
+    std::vector<cl_mem_properties_intel> AllocProperties;
+    if (pUSMDesc && pUSMDesc->pNext) {
+      UR_RETURN_ON_FAILURE(usmDescToCLMemProperties(
+          static_cast<const ur_base_desc_t *>(pUSMDesc->pNext),
+          AllocProperties));
+    }
+
+    if (FuncPtr) {
+      cl_int ClResult = CL_SUCCESS;
+      Ptr = FuncPtr(CLContext, hDevice->CLDevice,
+                    AllocProperties.empty() ? nullptr : AllocProperties.data(),
+                    size, Alignment, static_cast<cl_int *>(&ClResult));
+      if (ClResult == CL_INVALID_BUFFER_SIZE) {
+        return UR_RESULT_ERROR_INVALID_USM_SIZE;
+      }
+      CL_RETURN_ON_FAILURE(ClResult);
+    }
   }
 
   *ppMem = Ptr;
@@ -244,19 +334,27 @@ urUSMSharedAlloc(ur_context_handle_t Context, ur_device_handle_t hDevice,
 
 UR_APIEXPORT ur_result_t UR_APICALL urUSMFree(ur_context_handle_t Context,
                                               void *pMem) {
-
-  // Use a blocking free to avoid issues with indirect access from kernels that
-  // might be still running.
-  clMemBlockingFreeINTEL_fn FuncPtr = nullptr;
-
-  cl_context CLContext = Context->CLContext;
   ur_result_t RetVal = UR_RESULT_ERROR_INVALID_OPERATION;
-  RetVal = cl_ext::getExtFuncFromContext<clMemBlockingFreeINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clMemBlockingFreeINTELCache,
-      cl_ext::MemBlockingFreeName, &FuncPtr);
 
-  if (FuncPtr) {
-    RetVal = mapCLErrorToUR(FuncPtr(CLContext, pMem));
+  auto Platform = Context->getPlatform();
+  if (Platform->UseUnifiedSVM) {
+    auto FuncPtr = Platform->clSVMFreeWithPropertiesKHR;
+    if (FuncPtr) {
+      RetVal = mapCLErrorToUR(FuncPtr(Context->CLContext, nullptr, 0, pMem));
+    }
+  } else {
+    // Use a blocking free to avoid issues with indirect access from kernels
+    // that might be still running.
+    clMemBlockingFreeINTEL_fn FuncPtr = nullptr;
+
+    cl_context CLContext = Context->CLContext;
+    RetVal = cl_ext::getExtFuncFromContext<clMemBlockingFreeINTEL_fn>(
+        CLContext, ur::cl::getAdapter()->fnCache.clMemBlockingFreeINTELCache,
+        cl_ext::MemBlockingFreeName, &FuncPtr);
+
+    if (FuncPtr) {
+      RetVal = mapCLErrorToUR(FuncPtr(CLContext, pMem));
+    }
   }
 
   return RetVal;
@@ -360,7 +458,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMMemcpy(
     size_t size, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
 
-  // Have to look up the context from the kernel
+  // Have to look up the context from the queue
   cl_context CLContext = hQueue->Context->CLContext;
 
   cl_int CLErr = CL_SUCCESS;
@@ -421,8 +519,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMMemcpy(
         HostMemAlloc(CLContext, nullptr, size, 0, &CLErr));
     CL_RETURN_ON_FAILURE(CLErr);
 
-    // Now that we've successfully allocated we should try to clean it up if we
-    // hit an error somewhere.
+    // Now that we've successfully allocated we should try to clean it up if
+    // we hit an error somewhere.
     auto checkCLErr = [&](cl_int CLErr) -> ur_result_t {
       if (CLErr != CL_SUCCESS) {
         if (HostCopyEvent) {
@@ -540,8 +638,9 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMPrefetch(
   cl_context CLContext = hQueue->Context;
 
   clEnqueueMigrateMemINTEL_fn FuncPtr;
-  ur_result_t Err = cl_ext::getExtFuncFromContext<clEnqueueMigrateMemINTEL_fn>(
-      CLContext, "clEnqueueMigrateMemINTEL", &FuncPtr);
+  ur_result_t Err =
+  cl_ext::getExtFuncFromContext<clEnqueueMigrateMemINTEL_fn>( CLContext,
+  "clEnqueueMigrateMemINTEL", &FuncPtr);
 
   ur_result_t RetVal;
   if (Err != UR_RESULT_SUCCESS) {
@@ -670,37 +769,86 @@ mapCLUSMTypeToUR(const cl_unified_shared_memory_type_intel &Type) {
 UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
     ur_context_handle_t Context, const void *pMem, ur_usm_alloc_info_t propName,
     size_t propSize, void *pPropValue, size_t *pPropSizeRet) {
-
-  clGetMemAllocInfoINTEL_fn GetMemAllocInfo = nullptr;
-  cl_context CLContext = Context->CLContext;
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clGetMemAllocInfoINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clGetMemAllocInfoINTELCache,
-      cl_ext::GetMemAllocInfoName, &GetMemAllocInfo));
-
-  cl_mem_info_intel PropNameCL;
-  switch (propName) {
-  case UR_USM_ALLOC_INFO_TYPE:
-    PropNameCL = CL_MEM_ALLOC_TYPE_INTEL;
-    break;
-  case UR_USM_ALLOC_INFO_BASE_PTR:
-    PropNameCL = CL_MEM_ALLOC_BASE_PTR_INTEL;
-    break;
-  case UR_USM_ALLOC_INFO_SIZE:
-    PropNameCL = CL_MEM_ALLOC_SIZE_INTEL;
-    break;
-  case UR_USM_ALLOC_INFO_DEVICE:
-    PropNameCL = CL_MEM_ALLOC_DEVICE_INTEL;
-    break;
-  default:
-    return UR_RESULT_ERROR_UNSUPPORTED_ENUMERATION;
-  }
-  UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
-  if (propName == UR_USM_ALLOC_INFO_DEVICE) {
-    return ReturnValue(Context->Devices[0]);
-  }
+  auto Platform = Context->getPlatform();
+  cl_int ClErr = CL_SUCCESS;
   size_t CheckPropSize = 0;
-  cl_int ClErr = GetMemAllocInfo(Context->CLContext, pMem, PropNameCL, propSize,
-                                 pPropValue, &CheckPropSize);
+
+  if (Platform->UseUnifiedSVM && Platform->clGetSVMPointerInfoKHR) {
+    clGetSVMPointerInfoKHR_fn FuncPtr = Platform->clGetSVMPointerInfoKHR;
+
+    cl_svm_pointer_info_khr PropNameCL;
+    switch (propName) {
+    case UR_USM_ALLOC_INFO_TYPE:
+      // Note: The type index is returned as a cl_uint, which we will turn
+      // into a ur_usm_type_t.
+      static_assert(sizeof(ur_usm_type_t) == sizeof(cl_uint),
+                    "ur_usm_type_t must be the same size as "
+                    "cl_uint");
+      PropNameCL = CL_SVM_INFO_TYPE_INDEX_KHR;
+      break;
+    case UR_USM_ALLOC_INFO_BASE_PTR:
+      PropNameCL = CL_SVM_INFO_BASE_PTR_KHR;
+      break;
+    case UR_USM_ALLOC_INFO_SIZE:
+      PropNameCL = CL_SVM_INFO_SIZE_KHR;
+      break;
+    case UR_USM_ALLOC_INFO_DEVICE:
+      PropNameCL = CL_SVM_INFO_ASSOCIATED_DEVICE_HANDLE_KHR;
+      break;
+    default:
+      return UR_RESULT_ERROR_UNSUPPORTED_ENUMERATION;
+    }
+    UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
+    ClErr = FuncPtr(Context->CLContext, nullptr, pMem, PropNameCL, propSize,
+                    pPropValue, &CheckPropSize);
+    if (propName == UR_USM_ALLOC_INFO_TYPE && pPropValue &&
+        propSize == sizeof(cl_uint)) {
+      // TODO: Consider making the platform SVM type indices unsigned?
+      auto SVMTypeIndex = *static_cast<const cl_int *>(pPropValue);
+      if (SVMTypeIndex == Platform->DeviceSVMTypeIndex) {
+        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_DEVICE;
+      } else if (SVMTypeIndex == Platform->SingleDeviceSharedSVMTypeIndex) {
+        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_SHARED;
+      } else if (SVMTypeIndex == Platform->HostSVMTypeIndex) {
+        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_HOST;
+      } else {
+        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_UNKNOWN;
+      }
+    }
+  } else {
+    clGetMemAllocInfoINTEL_fn FuncPtr = nullptr;
+    cl_context CLContext = Context->CLContext;
+    UR_RETURN_ON_FAILURE(
+        cl_ext::getExtFuncFromContext<clGetMemAllocInfoINTEL_fn>(
+            CLContext,
+            ur::cl::getAdapter()->fnCache.clGetMemAllocInfoINTELCache,
+            cl_ext::GetMemAllocInfoName, &FuncPtr));
+
+    cl_mem_info_intel PropNameCL;
+    switch (propName) {
+    case UR_USM_ALLOC_INFO_TYPE:
+      PropNameCL = CL_MEM_ALLOC_TYPE_INTEL;
+      break;
+    case UR_USM_ALLOC_INFO_BASE_PTR:
+      PropNameCL = CL_MEM_ALLOC_BASE_PTR_INTEL;
+      break;
+    case UR_USM_ALLOC_INFO_SIZE:
+      PropNameCL = CL_MEM_ALLOC_SIZE_INTEL;
+      break;
+    case UR_USM_ALLOC_INFO_DEVICE:
+      PropNameCL = CL_MEM_ALLOC_DEVICE_INTEL;
+      break;
+    default:
+      return UR_RESULT_ERROR_UNSUPPORTED_ENUMERATION;
+    }
+    UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
+    if (propName == UR_USM_ALLOC_INFO_DEVICE) { // TODO: This looks incorrect!
+      return ReturnValue(Context->Devices[0]);
+    }
+    ClErr = FuncPtr(Context->CLContext, pMem, PropNameCL, propSize, pPropValue,
+                    &CheckPropSize);
+  }
+
   if (pPropValue && CheckPropSize != propSize) {
     return UR_RESULT_ERROR_INVALID_SIZE;
   }

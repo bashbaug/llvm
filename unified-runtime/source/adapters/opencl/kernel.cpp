@@ -361,46 +361,52 @@ urKernelRelease(ur_kernel_handle_t hKernel) {
  */
 static ur_result_t usmSetIndirectAccess(ur_kernel_handle_t hKernel) {
 
-  cl_bool TrueVal = CL_TRUE;
-  clHostMemAllocINTEL_fn HFunc = nullptr;
-  clSharedMemAllocINTEL_fn SFunc = nullptr;
-  clDeviceMemAllocINTEL_fn DFunc = nullptr;
-  cl_context CLContext;
+  const cl_bool TrueVal = CL_TRUE;
 
-  /* We test that each alloc type is supported before we actually try to set
-   * KernelExecInfo. */
-  CL_RETURN_ON_FAILURE(clGetKernelInfo(hKernel->CLKernel, CL_KERNEL_CONTEXT,
-                                       sizeof(cl_context), &CLContext,
-                                       nullptr));
+  auto Platform = hKernel->Context->getPlatform();
+  if (Platform->UseUnifiedSVM) {
+    clSetKernelExecInfo(hKernel->CLKernel,
+                        CL_KERNEL_EXEC_INFO_SVM_INDIRECT_ACCESS_KHR,
+                        sizeof(cl_bool), &TrueVal);
+  } else {
+    cl_context CLContext = hKernel->Context->CLContext;
 
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clHostMemAllocINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clHostMemAllocINTELCache,
-      cl_ext::HostMemAllocName, &HFunc));
+    /* We test that each alloc type is supported before we actually try to set
+     * KernelExecInfo. */
+    clHostMemAllocINTEL_fn HFunc = nullptr;
+    UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clHostMemAllocINTEL_fn>(
+        CLContext, ur::cl::getAdapter()->fnCache.clHostMemAllocINTELCache,
+        cl_ext::HostMemAllocName, &HFunc));
 
-  if (HFunc) {
-    CL_RETURN_ON_FAILURE(clSetKernelExecInfo(
-        hKernel->CLKernel, CL_KERNEL_EXEC_INFO_INDIRECT_HOST_ACCESS_INTEL,
-        sizeof(cl_bool), &TrueVal));
-  }
+    if (HFunc) {
+      CL_RETURN_ON_FAILURE(clSetKernelExecInfo(
+          hKernel->CLKernel, CL_KERNEL_EXEC_INFO_INDIRECT_HOST_ACCESS_INTEL,
+          sizeof(cl_bool), &TrueVal));
+    }
 
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clDeviceMemAllocINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clDeviceMemAllocINTELCache,
-      cl_ext::DeviceMemAllocName, &DFunc));
+    clDeviceMemAllocINTEL_fn DFunc = nullptr;
+    UR_RETURN_ON_FAILURE(
+        cl_ext::getExtFuncFromContext<clDeviceMemAllocINTEL_fn>(
+            CLContext, ur::cl::getAdapter()->fnCache.clDeviceMemAllocINTELCache,
+            cl_ext::DeviceMemAllocName, &DFunc));
 
-  if (DFunc) {
-    CL_RETURN_ON_FAILURE(clSetKernelExecInfo(
-        hKernel->CLKernel, CL_KERNEL_EXEC_INFO_INDIRECT_DEVICE_ACCESS_INTEL,
-        sizeof(cl_bool), &TrueVal));
-  }
+    if (DFunc) {
+      CL_RETURN_ON_FAILURE(clSetKernelExecInfo(
+          hKernel->CLKernel, CL_KERNEL_EXEC_INFO_INDIRECT_DEVICE_ACCESS_INTEL,
+          sizeof(cl_bool), &TrueVal));
+    }
 
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clSharedMemAllocINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clSharedMemAllocINTELCache,
-      cl_ext::SharedMemAllocName, &SFunc));
+    clSharedMemAllocINTEL_fn SFunc = nullptr;
+    UR_RETURN_ON_FAILURE(
+        cl_ext::getExtFuncFromContext<clSharedMemAllocINTEL_fn>(
+            CLContext, ur::cl::getAdapter()->fnCache.clSharedMemAllocINTELCache,
+            cl_ext::SharedMemAllocName, &SFunc));
 
-  if (SFunc) {
-    CL_RETURN_ON_FAILURE(clSetKernelExecInfo(
-        hKernel->CLKernel, CL_KERNEL_EXEC_INFO_INDIRECT_SHARED_ACCESS_INTEL,
-        sizeof(cl_bool), &TrueVal));
+    if (SFunc) {
+      CL_RETURN_ON_FAILURE(clSetKernelExecInfo(
+          hKernel->CLKernel, CL_KERNEL_EXEC_INFO_INDIRECT_SHARED_ACCESS_INTEL,
+          sizeof(cl_bool), &TrueVal));
+    }
   }
   return UR_RESULT_SUCCESS;
 }
@@ -437,12 +443,17 @@ UR_APIEXPORT ur_result_t UR_APICALL urKernelSetArgPointer(
     ur_kernel_handle_t hKernel, uint32_t argIndex,
     const ur_kernel_arg_pointer_properties_t *, const void *pArgValue) {
 
-  if (hKernel->clSetKernelArgMemPointerINTEL == nullptr) {
-    return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
-  }
+  if (hKernel->Context->getPlatform()->UseUnifiedSVM) {
+    CL_RETURN_ON_FAILURE(clSetKernelArgSVMPointer(
+        hKernel->CLKernel, static_cast<cl_uint>(argIndex), pArgValue));
+  } else {
+    if (hKernel->clSetKernelArgMemPointerINTEL == nullptr) {
+      return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
+    }
 
-  CL_RETURN_ON_FAILURE(hKernel->clSetKernelArgMemPointerINTEL(
-      hKernel->CLKernel, static_cast<cl_uint>(argIndex), pArgValue));
+    CL_RETURN_ON_FAILURE(hKernel->clSetKernelArgMemPointerINTEL(
+        hKernel->CLKernel, static_cast<cl_uint>(argIndex), pArgValue));
+  }
 
   return UR_RESULT_SUCCESS;
 }

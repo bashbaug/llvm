@@ -22,6 +22,16 @@ struct ur_platform_handle_t_ : ur::opencl::handle_base {
   std::map<cl_device_id, ur_device_handle_t> SubDevices;
   std::mutex SubDevicesLock;
 
+  bool UseUnifiedSVM = false;
+  std::vector<cl_svm_capabilities_khr> SVMCapabilities;
+  int32_t DeviceSVMTypeIndex = -1;
+  int32_t HostSVMTypeIndex = -1;
+  int32_t SingleDeviceSharedSVMTypeIndex = -1;
+  clSVMAllocWithPropertiesKHR_fn clSVMAllocWithPropertiesKHR = nullptr;
+  clSVMFreeWithPropertiesKHR_fn clSVMFreeWithPropertiesKHR = nullptr;
+  clGetSVMPointerInfoKHR_fn clGetSVMPointerInfoKHR = nullptr;
+  clGetSVMSuggestedTypeIndexKHR_fn clGetSVMSuggestedTypeIndexKHR = nullptr;
+
   ur_platform_handle_t_(native_type Plat) : handle_base(), CLPlatform(Plat) {}
 
   ~ur_platform_handle_t_() {
@@ -46,6 +56,7 @@ struct ur_platform_handle_t_ : ur::opencl::handle_base {
   }
 
   ur_result_t InitDevices();
+  ur_result_t InitUnifiedSVM();
 
   ur_result_t getPlatformVersion(oclv::OpenCLVersion &Version) {
     size_t PlatVerSize = 0;

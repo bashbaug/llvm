@@ -50,4 +50,10 @@ struct ur_context_handle_t_ : ur::opencl::handle_base {
       clReleaseContext(CLContext);
     }
   }
+
+  ur_platform_handle_t getPlatform() const {
+    assert(DeviceCount > 0 &&
+           "Context must have at least one device to get platform");
+    return Devices[0]->Platform;
+  }
 };

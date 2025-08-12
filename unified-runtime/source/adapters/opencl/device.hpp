@@ -23,6 +23,9 @@ struct ur_device_handle_t_ : ur::opencl::handle_base {
   bool IsNativeHandleOwned = true;
   ur::RefCount RefCount;
 
+  bool UseUnifiedSVM = false;
+  std::vector<cl_svm_capabilities_khr> SVMCapabilities;
+
   ur_device_handle_t_(native_type Dev, ur_platform_handle_t Plat,
                       ur_device_handle_t Parent)
       : handle_base(), CLDevice(Dev), Platform(Plat), ParentDevice(Parent) {
@@ -35,6 +38,7 @@ struct ur_device_handle_t_ : ur::opencl::handle_base {
           CLDevice, CL_DEVICE_TYPE, sizeof(cl_device_type), &Type, nullptr);
       assert(Res == CL_SUCCESS);
     }
+    InitUnifiedSVM();
   }
 
   ~ur_device_handle_t_() {
@@ -106,6 +110,22 @@ struct ur_device_handle_t_ : ur::opencl::handle_base {
       }
     }
 
+    return UR_RESULT_SUCCESS;
+  }
+
+  ur_result_t InitUnifiedSVM() {
+    if (CheckUseUnifiedSVM) {
+      checkDeviceExtensions({"cl_khr_unified_svm"}, UseUnifiedSVM);
+    }
+    if (UseUnifiedSVM) {
+      size_t sz = 0;
+      clGetDeviceInfo(CLDevice, CL_DEVICE_SVM_TYPE_CAPABILITIES_KHR, 0, nullptr,
+                      &sz);
+
+      SVMCapabilities.resize(sz / sizeof(cl_svm_capabilities_khr));
+      clGetDeviceInfo(CLDevice, CL_DEVICE_SVM_TYPE_CAPABILITIES_KHR, sz,
+                      SVMCapabilities.data(), nullptr);
+    }
     return UR_RESULT_SUCCESS;
   }
 };

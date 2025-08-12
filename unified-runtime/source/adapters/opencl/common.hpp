@@ -15,6 +15,7 @@
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
 #include <climits>
+#include <common/opencl/cl_khr_unified_svm.h>
 #include <map>
 #include <mutex>
 #include <ur/ur.hpp>
@@ -153,6 +154,13 @@ inline const OpenCLVersion V3_0(3, 0);
 
 } // namespace oclv
 
+const int CheckUseUnifiedSVM = [] {
+  const char *UrRet = std::getenv("UR_CL_USE_CL_KHR_UNIFIED_SVM");
+  if (!UrRet)
+    return 0;
+  return std::atoi(UrRet);
+}();
+
 namespace cl_adapter {
 constexpr size_t MaxMessageSize = 256;
 extern thread_local int32_t ErrorMessageCode;
@@ -177,19 +185,24 @@ namespace cl_ext {
 #define CONSTFIX const
 #endif
 
-// Names of USM functions that are queried from OpenCL
+// Names of Unified SVM functions that are queried from OpenCL
+CONSTFIX char SVMAllocWithPropertiesName[] = "clSVMAllocWithPropertiesKHR";
+CONSTFIX char SVMFreeWithPropertiesName[] = "clSVMFreeWithPropertiesKHR";
+CONSTFIX char GetSVMPointerInfoName[] = "clGetSVMPointerInfoKHR";
+CONSTFIX char GetSVMSuggestedTypeIndexName[] = "clGetSVMSuggestedTypeIndexKHR";
+// Names of Intel USM functions that are queried from OpenCL
 CONSTFIX char HostMemAllocName[] = "clHostMemAllocINTEL";
 CONSTFIX char DeviceMemAllocName[] = "clDeviceMemAllocINTEL";
 CONSTFIX char SharedMemAllocName[] = "clSharedMemAllocINTEL";
 CONSTFIX char MemBlockingFreeName[] = "clMemBlockingFreeINTEL";
-CONSTFIX char CreateBufferWithPropertiesName[] =
-    "clCreateBufferWithPropertiesINTEL";
 CONSTFIX char SetKernelArgMemPointerName[] = "clSetKernelArgMemPointerINTEL";
 CONSTFIX char EnqueueMemFillName[] = "clEnqueueMemFillINTEL";
 CONSTFIX char EnqueueMemcpyName[] = "clEnqueueMemcpyINTEL";
 CONSTFIX char GetMemAllocInfoName[] = "clGetMemAllocInfoINTEL";
-CONSTFIX char SetProgramSpecializationConstantName[] =
-    "clSetProgramSpecializationConstant";
+// Names of buffer creation with properties functions queried from OpenCL
+CONSTFIX char CreateBufferWithPropertiesName[] =
+    "clCreateBufferWithPropertiesINTEL";
+// Names of device global functions queried from OpenCL
 CONSTFIX char GetDeviceFunctionPointerName[] =
     "clGetDeviceFunctionPointerINTEL";
 CONSTFIX char GetDeviceGlobalVariablePointerName[] =

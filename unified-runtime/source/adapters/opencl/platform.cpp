@@ -107,6 +107,7 @@ urPlatformGet(ur_adapter_handle_t, uint32_t NumEntries,
           auto URPlatform =
               std::make_unique<ur_platform_handle_t_>(CLPlatforms[i]);
           UR_RETURN_ON_FAILURE(URPlatform->InitDevices());
+          UR_RETURN_ON_FAILURE(URPlatform->InitUnifiedSVM());
           Adapter->URPlatforms.emplace_back(URPlatform.release());
         }
         Adapter->NumPlatforms = NumPlatforms;
@@ -228,6 +229,56 @@ ur_result_t ur_platform_handle_t_::InitDevices() {
     } catch (...) {
       return UR_RESULT_ERROR_UNKNOWN;
     }
+  }
+
+  return UR_RESULT_SUCCESS;
+}
+
+ur_result_t ur_platform_handle_t_::InitUnifiedSVM() {
+  bool checkSupportsUnifiedSVM = true;
+  for (const auto &Device : Devices) {
+    if (!Device->UseUnifiedSVM) {
+      checkSupportsUnifiedSVM = false;
+      break;
+    }
+  }
+
+  UseUnifiedSVM = checkSupportsUnifiedSVM;
+  if (UseUnifiedSVM) {
+    size_t sz = 0;
+    clGetPlatformInfo(CLPlatform, CL_PLATFORM_SVM_TYPE_CAPABILITIES_KHR, 0,
+                      nullptr, &sz);
+
+    SVMCapabilities.resize(sz / sizeof(cl_svm_capabilities_khr));
+    clGetPlatformInfo(CLPlatform, CL_PLATFORM_SVM_TYPE_CAPABILITIES_KHR, sz,
+                      SVMCapabilities.data(), nullptr);
+
+    for (size_t i = 0; i < SVMCapabilities.size(); i++) {
+      if ((SVMCapabilities[i] & CL_SVM_TYPE_MACRO_DEVICE_KHR) ==
+          CL_SVM_TYPE_MACRO_DEVICE_KHR) {
+        DeviceSVMTypeIndex = static_cast<int32_t>(i);
+      } else if ((SVMCapabilities[i] & CL_SVM_TYPE_MACRO_HOST_KHR) ==
+                 CL_SVM_TYPE_MACRO_HOST_KHR) {
+        HostSVMTypeIndex = static_cast<int32_t>(i);
+      } else if ((SVMCapabilities[i] &
+                  CL_SVM_TYPE_MACRO_SINGLE_DEVICE_SHARED_KHR) ==
+                 CL_SVM_TYPE_MACRO_SINGLE_DEVICE_SHARED_KHR) {
+        SingleDeviceSharedSVMTypeIndex = static_cast<int32_t>(i);
+      }
+    }
+
+    clSVMAllocWithPropertiesKHR = (clSVMAllocWithPropertiesKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(
+            CLPlatform, cl_ext::SVMAllocWithPropertiesName);
+    clSVMFreeWithPropertiesKHR =
+        (clSVMFreeWithPropertiesKHR_fn)clGetExtensionFunctionAddressForPlatform(
+            CLPlatform, cl_ext::SVMFreeWithPropertiesName);
+    clGetSVMPointerInfoKHR =
+        (clGetSVMPointerInfoKHR_fn)clGetExtensionFunctionAddressForPlatform(
+            CLPlatform, cl_ext::GetSVMPointerInfoName);
+    clGetSVMSuggestedTypeIndexKHR = (clGetSVMSuggestedTypeIndexKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(
+            CLPlatform, cl_ext::GetSVMSuggestedTypeIndexName);
   }
 
   return UR_RESULT_SUCCESS;
