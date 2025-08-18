@@ -27,6 +27,7 @@ struct ur_platform_handle_t_ : ur::opencl::handle_base {
   int32_t DeviceSVMTypeIndex = -1;
   int32_t HostSVMTypeIndex = -1;
   int32_t SingleDeviceSharedSVMTypeIndex = -1;
+  int32_t SystemSVMTypeIndex = -1;
   clSVMAllocWithPropertiesKHR_fn clSVMAllocWithPropertiesKHR = nullptr;
   clSVMFreeWithPropertiesKHR_fn clSVMFreeWithPropertiesKHR = nullptr;
   clGetSVMPointerInfoKHR_fn clGetSVMPointerInfoKHR = nullptr;

@@ -254,8 +254,11 @@ ur_result_t ur_platform_handle_t_::InitUnifiedSVM() {
                       SVMCapabilities.data(), nullptr);
 
     for (size_t i = 0; i < SVMCapabilities.size(); i++) {
-      if ((SVMCapabilities[i] & CL_SVM_TYPE_MACRO_DEVICE_KHR) ==
-          CL_SVM_TYPE_MACRO_DEVICE_KHR) {
+      if ((SVMCapabilities[i] & CL_SVM_TYPE_MACRO_SYSTEM_KHR) ==
+          CL_SVM_TYPE_MACRO_SYSTEM_KHR) {
+        SystemSVMTypeIndex = static_cast<int32_t>(i);
+      } else if ((SVMCapabilities[i] & CL_SVM_TYPE_MACRO_DEVICE_KHR) ==
+                 CL_SVM_TYPE_MACRO_DEVICE_KHR) {
         DeviceSVMTypeIndex = static_cast<int32_t>(i);
       } else if ((SVMCapabilities[i] & CL_SVM_TYPE_MACRO_HOST_KHR) ==
                  CL_SVM_TYPE_MACRO_HOST_KHR) {

@@ -711,8 +711,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetInfo(ur_device_handle_t hDevice,
     auto Platform = hDevice->Platform;
     if (Platform->UseUnifiedSVM) {
       auto SVMTypeIndex = Platform->HostSVMTypeIndex;
-      auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
-      return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      if (SVMTypeIndex < 0) {
+        return ReturnValue(0);
+      } else {
+        auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
+        return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      }
     } else {
       bool Supported = false;
       UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
@@ -732,8 +736,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetInfo(ur_device_handle_t hDevice,
     auto Platform = hDevice->Platform;
     if (Platform->UseUnifiedSVM) {
       auto SVMTypeIndex = Platform->DeviceSVMTypeIndex;
-      auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
-      return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      if (SVMTypeIndex < 0) {
+        return ReturnValue(0);
+      } else {
+        auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
+        return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      }
     } else {
       bool Supported = false;
       UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
@@ -753,8 +761,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetInfo(ur_device_handle_t hDevice,
     auto Platform = hDevice->Platform;
     if (Platform->UseUnifiedSVM) {
       auto SVMTypeIndex = Platform->SingleDeviceSharedSVMTypeIndex;
-      auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
-      return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      if (SVMTypeIndex < 0) {
+        return ReturnValue(0);
+      } else {
+        auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
+        return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      }
     } else {
       bool Supported = false;
       UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
@@ -772,34 +784,48 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetInfo(ur_device_handle_t hDevice,
     }
   }
   case UR_DEVICE_INFO_USM_CROSS_SHARED_SUPPORT: {
-    // TODO: Unified SVM cross device shared support?
-    bool Supported = false;
-    UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
-        {"cl_intel_unified_shared_memory"}, Supported));
-    if (Supported) {
-      cl_bitfield CLValue = 0;
-      CL_RETURN_ON_FAILURE(
-          clGetDeviceInfo(hDevice->CLDevice,
-                          CL_DEVICE_CROSS_DEVICE_SHARED_MEM_CAPABILITIES_INTEL,
-                          sizeof(cl_bitfield), &CLValue, nullptr));
-      return ReturnValue(static_cast<uint32_t>(CLValue));
-    } else {
+    auto Platform = hDevice->Platform;
+    if (Platform->UseUnifiedSVM) {
       return ReturnValue(0);
+    } else {
+      bool Supported = false;
+      UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
+          {"cl_intel_unified_shared_memory"}, Supported));
+      if (Supported) {
+        cl_bitfield CLValue = 0;
+        CL_RETURN_ON_FAILURE(
+            clGetDeviceInfo(hDevice->CLDevice,
+                            CL_DEVICE_CROSS_DEVICE_SHARED_MEM_CAPABILITIES_INTEL,
+                            sizeof(cl_bitfield), &CLValue, nullptr));
+        return ReturnValue(static_cast<uint32_t>(CLValue));
+      } else {
+        return ReturnValue(0);
+      }
     }
   }
   case UR_DEVICE_INFO_USM_SYSTEM_SHARED_SUPPORT: {
-    // TODO: Unified SVM system shared support?
-    bool Supported = false;
-    UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
-        {"cl_intel_unified_shared_memory"}, Supported));
-    if (Supported) {
-      cl_bitfield CLValue = 0;
-      CL_RETURN_ON_FAILURE(clGetDeviceInfo(
-          hDevice->CLDevice, CL_DEVICE_SHARED_SYSTEM_MEM_CAPABILITIES_INTEL,
-          sizeof(cl_bitfield), &CLValue, nullptr));
-      return ReturnValue(static_cast<uint32_t>(CLValue));
+    auto Platform = hDevice->Platform;
+    if (Platform->UseUnifiedSVM) {
+      auto SVMTypeIndex = Platform->SystemSVMTypeIndex;
+      if (SVMTypeIndex < 0) {
+        return ReturnValue(0);
+      } else {
+        auto caps = hDevice->SVMCapabilities[SVMTypeIndex];
+        return ReturnValue(mapCLDeviceSVMCapsToUR(caps));
+      }
     } else {
-      return ReturnValue(0);
+      bool Supported = false;
+      UR_RETURN_ON_FAILURE(hDevice->checkDeviceExtensions(
+          {"cl_intel_unified_shared_memory"}, Supported));
+      if (Supported) {
+        cl_bitfield CLValue = 0;
+        CL_RETURN_ON_FAILURE(clGetDeviceInfo(
+            hDevice->CLDevice, CL_DEVICE_SHARED_SYSTEM_MEM_CAPABILITIES_INTEL,
+            sizeof(cl_bitfield), &CLValue, nullptr));
+        return ReturnValue(static_cast<uint32_t>(CLValue));
+      } else {
+        return ReturnValue(0);
+      }
     }
   }
   case UR_DEVICE_INFO_IMAGE_SUPPORT: {
