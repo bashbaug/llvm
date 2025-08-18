@@ -475,6 +475,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMMemcpy(
   const auto Platform = hQueue->Context->getPlatform();
   if (Platform->UseUnifiedSVM) {
     // TODO: Do we need the special multi-device handling below?
+    // See issue 10 in the cl_khr_unified_svm specification:
+    // Can a device "memcpy" from another device’s allocation? (Recommendation:
+    // Yes, but finalize as part of multi-device support.)
+    // Can a device "memcpy" to another device’s allocation? (Recommendation:
+    // Yes, but finalize as part of multi-device support.)
+    // Note that for the code below to work the source and destination pointers
+    // must be from the same context even if they are associated with devices!
 
     std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
     for (uint32_t i = 0; i < numEventsInWaitList; i++) {
