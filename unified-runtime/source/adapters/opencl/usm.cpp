@@ -853,9 +853,6 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
       return UR_RESULT_ERROR_UNSUPPORTED_ENUMERATION;
     }
     UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
-    if (propName == UR_USM_ALLOC_INFO_DEVICE) { // TODO: This looks incorrect!
-      return ReturnValue(Context->Devices[0]);
-    }
     ClErr = FuncPtr(Context->CLContext, nullptr, pMem, PropNameCL, propSize,
                     pPropValue, &CheckPropSize);
   } else {
@@ -885,9 +882,6 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
       return UR_RESULT_ERROR_UNSUPPORTED_ENUMERATION;
     }
     UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
-    if (propName == UR_USM_ALLOC_INFO_DEVICE) { // TODO: This looks incorrect!
-      return ReturnValue(Context->Devices[0]);
-    }
     ClErr = FuncPtr(Context->CLContext, pMem, PropNameCL, propSize, pPropValue,
                     &CheckPropSize);
   }
@@ -904,13 +898,18 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
       propSize == sizeof(cl_uint)) {
     if (Platform->UseUnifiedSVM) {
       // TODO: Consider making the platform SVM type indices unsigned?
-      auto SVMTypeIndex = *static_cast<const cl_int *>(pPropValue);
+      const auto SVMTypeIndex = *static_cast<const cl_int *>(pPropValue);
       auto URAllocType = mapCLSVMTypeIndexToUR(Platform, SVMTypeIndex);
       *static_cast<ur_usm_type_t *>(pPropValue) = URAllocType;
     } else {
       *static_cast<ur_usm_type_t *>(pPropValue) = mapCLUSMTypeToUR(
           *static_cast<cl_unified_shared_memory_type_intel *>(pPropValue));
     }
+  } else if (propName == UR_USM_ALLOC_INFO_DEVICE && pPropValue &&
+             propSize == sizeof(cl_device_id)) {
+    auto CLDevice = *static_cast<cl_device_id *>(pPropValue);
+    auto URDevice = mapCLDeviceToUR(Context->Devices, CLDevice);
+    *static_cast<ur_device_handle_t *>(pPropValue) = URDevice;
   }
 
   return UR_RESULT_SUCCESS;

@@ -129,3 +129,15 @@ struct ur_device_handle_t_ : ur::opencl::handle_base {
     return UR_RESULT_SUCCESS;
   }
 };
+
+static inline ur_device_handle_t
+mapCLDeviceToUR(const std::vector<ur_device_handle_t> &URDevices,
+                cl_device_id CLDevice)
+{
+  for (const auto URDevice : URDevices) {
+    if (URDevice->CLDevice == CLDevice) {
+      return URDevice;
+    }
+  }
+  return nullptr;
+}
