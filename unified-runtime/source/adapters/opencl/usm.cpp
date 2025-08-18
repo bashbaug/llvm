@@ -112,7 +112,7 @@ urUSMHostAlloc(ur_context_handle_t Context, const ur_usm_desc_t *pUSMDesc,
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 
-  auto Platform = Context->getPlatform();
+  const auto Platform = Context->getPlatform();
   if (Platform->UseUnifiedSVM && Platform->clSVMAllocWithPropertiesKHR &&
       Platform->HostSVMTypeIndex >= 0) {
     auto FuncPtr = Platform->clSVMAllocWithPropertiesKHR;
@@ -186,7 +186,7 @@ urUSMDeviceAlloc(ur_context_handle_t Context, ur_device_handle_t hDevice,
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 
-  auto Platform = Context->getPlatform();
+  const auto Platform = Context->getPlatform();
   if (Platform->UseUnifiedSVM &&
       Platform->clSVMAllocWithPropertiesKHR &&
       Platform->DeviceSVMTypeIndex >= 0) {
@@ -266,7 +266,7 @@ urUSMSharedAlloc(ur_context_handle_t Context, ur_device_handle_t hDevice,
     return UR_RESULT_ERROR_INVALID_VALUE;
   }
 
-  auto Platform = Context->getPlatform();
+  const auto Platform = Context->getPlatform();
   if (Platform->UseUnifiedSVM &&
       Platform->clSVMAllocWithPropertiesKHR &&
       Platform->SingleDeviceSharedSVMTypeIndex >= 0) {
@@ -336,7 +336,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMFree(ur_context_handle_t Context,
                                               void *pMem) {
   ur_result_t RetVal = UR_RESULT_ERROR_INVALID_OPERATION;
 
-  auto Platform = Context->getPlatform();
+  const auto Platform = Context->getPlatform();
   if (Platform->UseUnifiedSVM) {
     auto FuncPtr = Platform->clSVMFreeWithPropertiesKHR;
     if (FuncPtr) {
@@ -364,24 +364,35 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMFill(
     ur_queue_handle_t hQueue, void *ptr, size_t patternSize,
     const void *pPattern, size_t size, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
-  // Have to look up the context from the kernel
+  const auto Platform = hQueue->Context->getPlatform();
   cl_context CLContext = hQueue->Context->CLContext;
 
   if (patternSize <= 128 && isPowerOf2(patternSize) &&
       isPointerAlignedTo(patternSize, ptr)) {
     clEnqueueMemFillINTEL_fn EnqueueMemFill = nullptr;
-    UR_RETURN_ON_FAILURE(
-        cl_ext::getExtFuncFromContext<clEnqueueMemFillINTEL_fn>(
-            CLContext, ur::cl::getAdapter()->fnCache.clEnqueueMemFillINTELCache,
-            cl_ext::EnqueueMemFillName, &EnqueueMemFill));
-    cl_event Event;
+    if (!Platform->UseUnifiedSVM) {
+      UR_RETURN_ON_FAILURE(
+          cl_ext::getExtFuncFromContext<clEnqueueMemFillINTEL_fn>(
+              CLContext,
+              ur::cl::getAdapter()->fnCache.clEnqueueMemFillINTELCache,
+              cl_ext::EnqueueMemFillName, &EnqueueMemFill));
+    }
+
     std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
     for (uint32_t i = 0; i < numEventsInWaitList; i++) {
       CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
     }
-    CL_RETURN_ON_FAILURE(EnqueueMemFill(
-        hQueue->CLQueue, ptr, pPattern, patternSize, size, numEventsInWaitList,
-        CLWaitEvents.data(), ifUrEvent(phEvent, Event)));
+
+    cl_event Event;
+    if (Platform->UseUnifiedSVM) {
+      CL_RETURN_ON_FAILURE(clEnqueueSVMMemFill(
+          hQueue->CLQueue, ptr, pPattern, patternSize, size,
+          numEventsInWaitList, CLWaitEvents.data(), ifUrEvent(phEvent, Event)));
+    } else {
+      CL_RETURN_ON_FAILURE(EnqueueMemFill(
+          hQueue->CLQueue, ptr, pPattern, patternSize, size,
+          numEventsInWaitList, CLWaitEvents.data(), ifUrEvent(phEvent, Event)));
+    }
 
     UR_RETURN_ON_FAILURE(
         createUREvent(Event, hQueue->Context, hQueue, phEvent));
@@ -394,14 +405,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMFill(
   // target allocation.
 
   clEnqueueMemcpyINTEL_fn USMMemcpy = nullptr;
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clEnqueueMemcpyINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clEnqueueMemcpyINTELCache,
-      cl_ext::EnqueueMemcpyName, &USMMemcpy));
-
-  clMemBlockingFreeINTEL_fn USMFree = nullptr;
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clMemBlockingFreeINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clMemBlockingFreeINTELCache,
-      cl_ext::MemBlockingFreeName, &USMFree));
+  if (!Platform->UseUnifiedSVM) {
+    UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clEnqueueMemcpyINTEL_fn>(
+        CLContext, ur::cl::getAdapter()->fnCache.clEnqueueMemcpyINTELCache,
+        cl_ext::EnqueueMemcpyName, &USMMemcpy));
+  }
 
   uint8_t *HostBuffer = new uint8_t[size];
 
@@ -410,14 +418,21 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMFill(
     std::memcpy(Iter, pPattern, patternSize);
   }
 
-  cl_event CopyEvent = nullptr;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
   for (uint32_t i = 0; i < numEventsInWaitList; i++) {
     CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
   }
-  CL_RETURN_ON_FAILURE(USMMemcpy(hQueue->CLQueue, false, ptr, HostBuffer, size,
-                                 numEventsInWaitList, CLWaitEvents.data(),
-                                 &CopyEvent));
+
+  cl_event CopyEvent = nullptr;
+  if (Platform->UseUnifiedSVM) {
+    CL_RETURN_ON_FAILURE(clEnqueueSVMMemcpy(
+        hQueue->CLQueue, false, ptr, HostBuffer, size, numEventsInWaitList,
+        CLWaitEvents.data(), &CopyEvent));
+  } else {
+    CL_RETURN_ON_FAILURE(USMMemcpy(hQueue->CLQueue, false, ptr, HostBuffer,
+                                   size, numEventsInWaitList,
+                                   CLWaitEvents.data(), &CopyEvent));
+  }
 
   if (phEvent) {
     // Since we're releasing this in the callback above we need to retain it
@@ -457,202 +472,230 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMMemcpy(
     ur_queue_handle_t hQueue, bool blocking, void *pDst, const void *pSrc,
     size_t size, uint32_t numEventsInWaitList,
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
-
-  // Have to look up the context from the queue
-  cl_context CLContext = hQueue->Context->CLContext;
-
-  cl_int CLErr = CL_SUCCESS;
-  clGetMemAllocInfoINTEL_fn GetMemAllocInfo = nullptr;
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clGetMemAllocInfoINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clGetMemAllocInfoINTELCache,
-      cl_ext::GetMemAllocInfoName, &GetMemAllocInfo));
-
-  clEnqueueMemcpyINTEL_fn USMMemcpy = nullptr;
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clEnqueueMemcpyINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clEnqueueMemcpyINTELCache,
-      cl_ext::EnqueueMemcpyName, &USMMemcpy));
-
-  clMemBlockingFreeINTEL_fn USMFree = nullptr;
-  UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clMemBlockingFreeINTEL_fn>(
-      CLContext, ur::cl::getAdapter()->fnCache.clMemBlockingFreeINTELCache,
-      cl_ext::MemBlockingFreeName, &USMFree));
-
-  // Check if the two allocations are DEVICE allocations from different
-  // devices, if they are we need to do the copy indirectly via a host
-  // allocation.
-  cl_device_id SrcDevice = 0, DstDevice = 0;
-  CL_RETURN_ON_FAILURE(
-      GetMemAllocInfo(CLContext, pSrc, CL_MEM_ALLOC_DEVICE_INTEL,
-                      sizeof(cl_device_id), &SrcDevice, nullptr));
-  CL_RETURN_ON_FAILURE(
-      GetMemAllocInfo(CLContext, pDst, CL_MEM_ALLOC_DEVICE_INTEL,
-                      sizeof(cl_device_id), &DstDevice, nullptr));
-
-  if ((SrcDevice && DstDevice) && SrcDevice != DstDevice) {
-    // We need a queue associated with each device, so first figure out which
-    // one we weren't given.
-    cl_device_id QueueDevice = nullptr;
-    CL_RETURN_ON_FAILURE(clGetCommandQueueInfo(hQueue->CLQueue, CL_QUEUE_DEVICE,
-                                               sizeof(QueueDevice),
-                                               &QueueDevice, nullptr));
-
-    cl_command_queue MissingQueue = nullptr, SrcQueue = nullptr,
-                     DstQueue = nullptr;
-    if (QueueDevice == SrcDevice) {
-      MissingQueue = clCreateCommandQueue(CLContext, DstDevice, 0, &CLErr);
-      SrcQueue = hQueue->CLQueue;
-      DstQueue = MissingQueue;
-    } else {
-      MissingQueue = clCreateCommandQueue(CLContext, SrcDevice, 0, &CLErr);
-      DstQueue = hQueue->CLQueue;
-      SrcQueue = MissingQueue;
-    }
-    CL_RETURN_ON_FAILURE(CLErr);
-
-    cl_event HostCopyEvent = nullptr, FinalCopyEvent = nullptr;
-    clHostMemAllocINTEL_fn HostMemAlloc = nullptr;
-    UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clHostMemAllocINTEL_fn>(
-        CLContext, ur::cl::getAdapter()->fnCache.clHostMemAllocINTELCache,
-        cl_ext::HostMemAllocName, &HostMemAlloc));
-
-    auto HostAlloc = static_cast<uint8_t *>(
-        HostMemAlloc(CLContext, nullptr, size, 0, &CLErr));
-    CL_RETURN_ON_FAILURE(CLErr);
-
-    // Now that we've successfully allocated we should try to clean it up if
-    // we hit an error somewhere.
-    auto checkCLErr = [&](cl_int CLErr) -> ur_result_t {
-      if (CLErr != CL_SUCCESS) {
-        if (HostCopyEvent) {
-          clReleaseEvent(HostCopyEvent);
-        }
-        if (FinalCopyEvent) {
-          clReleaseEvent(FinalCopyEvent);
-        }
-        USMFree(CLContext, HostAlloc);
-        CL_RETURN_ON_FAILURE(CLErr);
-      }
-      return UR_RESULT_SUCCESS;
-    };
+  const auto Platform = hQueue->Context->getPlatform();
+  if (Platform->UseUnifiedSVM) {
+    // TODO: Do we need the special multi-device handling below?
 
     std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
     for (uint32_t i = 0; i < numEventsInWaitList; i++) {
       CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
     }
-    UR_RETURN_ON_FAILURE(checkCLErr(
-        USMMemcpy(SrcQueue, blocking, HostAlloc, pSrc, size,
-                  numEventsInWaitList, CLWaitEvents.data(), &HostCopyEvent)));
 
-    UR_RETURN_ON_FAILURE(
-        checkCLErr(USMMemcpy(DstQueue, blocking, pDst, HostAlloc, size, 1,
-                             &HostCopyEvent, &FinalCopyEvent)));
-
-    // If this is a blocking operation we can do our cleanup immediately,
-    // otherwise we need to defer it to an event callback.
-    if (blocking) {
-      CL_RETURN_ON_FAILURE(USMFree(CLContext, HostAlloc));
-      CL_RETURN_ON_FAILURE(clReleaseEvent(HostCopyEvent));
-      CL_RETURN_ON_FAILURE(clReleaseCommandQueue(MissingQueue));
-      if (phEvent) {
-        try {
-          auto UREvent = std::make_unique<ur_event_handle_t_>(
-              FinalCopyEvent, hQueue->Context, hQueue);
-          *phEvent = UREvent.release();
-        } catch (std::bad_alloc &) {
-          return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-        } catch (...) {
-          return UR_RESULT_ERROR_UNKNOWN;
-        }
-      } else {
-        CL_RETURN_ON_FAILURE(clReleaseEvent(FinalCopyEvent));
-      }
-    } else {
-      if (phEvent) {
-        try {
-          auto UREvent = std::make_unique<ur_event_handle_t_>(
-              FinalCopyEvent, hQueue->Context, hQueue);
-          *phEvent = UREvent.release();
-        } catch (std::bad_alloc &) {
-          return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-        } catch (...) {
-          return UR_RESULT_ERROR_UNKNOWN;
-        }
-        // We are going to release this event in our callback so we need to
-        // retain if the user wants a copy.
-        CL_RETURN_ON_FAILURE(clRetainEvent(FinalCopyEvent));
-      }
-
-      // This self destructs taking the event and allocation with it.
-      auto DeleterInfo = new AllocDeleterCallbackInfoUSMWithQueue(
-          USMFree, CLContext, HostAlloc, MissingQueue);
-
-      CLErr = clSetEventCallback(
-          HostCopyEvent, CL_COMPLETE,
-          AllocDeleterCallback<AllocDeleterCallbackInfoUSMWithQueue>,
-          DeleterInfo);
-
-      if (CLErr != CL_SUCCESS) {
-        // We can attempt to recover gracefully by attempting to wait for the
-        // copy to finish and deleting the info struct here.
-        clWaitForEvents(1, &HostCopyEvent);
-        delete DeleterInfo;
-        clReleaseEvent(HostCopyEvent);
-        CL_RETURN_ON_FAILURE(CLErr);
-      }
-    }
-  } else {
     cl_event Event;
-    std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-    for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-      CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-    }
-    CL_RETURN_ON_FAILURE(USMMemcpy(hQueue->CLQueue, blocking, pDst, pSrc, size,
-                                   numEventsInWaitList, CLWaitEvents.data(),
-                                   ifUrEvent(phEvent, Event)));
+    CL_RETURN_ON_FAILURE(clEnqueueSVMMemcpy(
+        hQueue->CLQueue, blocking, pDst, pSrc, size, numEventsInWaitList,
+        CLWaitEvents.data(), ifUrEvent(phEvent, Event)));
+
     UR_RETURN_ON_FAILURE(
         createUREvent(Event, hQueue->Context, hQueue, phEvent));
+  } else {
+    cl_context CLContext = hQueue->Context->CLContext;
+
+    cl_int CLErr = CL_SUCCESS;
+    clGetMemAllocInfoINTEL_fn GetMemAllocInfo = nullptr;
+    UR_RETURN_ON_FAILURE(
+        cl_ext::getExtFuncFromContext<clGetMemAllocInfoINTEL_fn>(
+            CLContext,
+            ur::cl::getAdapter()->fnCache.clGetMemAllocInfoINTELCache,
+            cl_ext::GetMemAllocInfoName, &GetMemAllocInfo));
+
+    clEnqueueMemcpyINTEL_fn USMMemcpy = nullptr;
+    UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<clEnqueueMemcpyINTEL_fn>(
+        CLContext, ur::cl::getAdapter()->fnCache.clEnqueueMemcpyINTELCache,
+        cl_ext::EnqueueMemcpyName, &USMMemcpy));
+
+    clMemBlockingFreeINTEL_fn USMFree = nullptr;
+    UR_RETURN_ON_FAILURE(
+        cl_ext::getExtFuncFromContext<clMemBlockingFreeINTEL_fn>(
+            CLContext,
+            ur::cl::getAdapter()->fnCache.clMemBlockingFreeINTELCache,
+            cl_ext::MemBlockingFreeName, &USMFree));
+
+    // Check if the two allocations are DEVICE allocations from different
+    // devices, if they are we need to do the copy indirectly via a host
+    // allocation.
+    cl_device_id SrcDevice = 0, DstDevice = 0;
+    CL_RETURN_ON_FAILURE(
+        GetMemAllocInfo(CLContext, pSrc, CL_MEM_ALLOC_DEVICE_INTEL,
+                        sizeof(cl_device_id), &SrcDevice, nullptr));
+    CL_RETURN_ON_FAILURE(
+        GetMemAllocInfo(CLContext, pDst, CL_MEM_ALLOC_DEVICE_INTEL,
+                        sizeof(cl_device_id), &DstDevice, nullptr));
+
+    if ((SrcDevice && DstDevice) && SrcDevice != DstDevice) {
+      // We need a queue associated with each device, so first figure out which
+      // one we weren't given.
+      cl_device_id QueueDevice = nullptr;
+      CL_RETURN_ON_FAILURE(
+          clGetCommandQueueInfo(hQueue->CLQueue, CL_QUEUE_DEVICE,
+                                sizeof(QueueDevice), &QueueDevice, nullptr));
+
+      cl_command_queue MissingQueue = nullptr, SrcQueue = nullptr,
+                       DstQueue = nullptr;
+      if (QueueDevice == SrcDevice) {
+        MissingQueue = clCreateCommandQueue(CLContext, DstDevice, 0, &CLErr);
+        SrcQueue = hQueue->CLQueue;
+        DstQueue = MissingQueue;
+      } else {
+        MissingQueue = clCreateCommandQueue(CLContext, SrcDevice, 0, &CLErr);
+        DstQueue = hQueue->CLQueue;
+        SrcQueue = MissingQueue;
+      }
+      CL_RETURN_ON_FAILURE(CLErr);
+
+      cl_event HostCopyEvent = nullptr, FinalCopyEvent = nullptr;
+      clHostMemAllocINTEL_fn HostMemAlloc = nullptr;
+      UR_RETURN_ON_FAILURE(
+          cl_ext::getExtFuncFromContext<clHostMemAllocINTEL_fn>(
+              CLContext, ur::cl::getAdapter()->fnCache.clHostMemAllocINTELCache,
+              cl_ext::HostMemAllocName, &HostMemAlloc));
+
+      auto HostAlloc = static_cast<uint8_t *>(
+          HostMemAlloc(CLContext, nullptr, size, 0, &CLErr));
+      CL_RETURN_ON_FAILURE(CLErr);
+
+      // Now that we've successfully allocated we should try to clean it up if
+      // we hit an error somewhere.
+      auto checkCLErr = [&](cl_int CLErr) -> ur_result_t {
+        if (CLErr != CL_SUCCESS) {
+          if (HostCopyEvent) {
+            clReleaseEvent(HostCopyEvent);
+          }
+          if (FinalCopyEvent) {
+            clReleaseEvent(FinalCopyEvent);
+          }
+          USMFree(CLContext, HostAlloc);
+          CL_RETURN_ON_FAILURE(CLErr);
+        }
+        return UR_RESULT_SUCCESS;
+      };
+
+      std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
+      for (uint32_t i = 0; i < numEventsInWaitList; i++) {
+        CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
+      }
+      UR_RETURN_ON_FAILURE(checkCLErr(
+          USMMemcpy(SrcQueue, blocking, HostAlloc, pSrc, size,
+                    numEventsInWaitList, CLWaitEvents.data(), &HostCopyEvent)));
+
+      UR_RETURN_ON_FAILURE(
+          checkCLErr(USMMemcpy(DstQueue, blocking, pDst, HostAlloc, size, 1,
+                               &HostCopyEvent, &FinalCopyEvent)));
+
+      // If this is a blocking operation we can do our cleanup immediately,
+      // otherwise we need to defer it to an event callback.
+      if (blocking) {
+        CL_RETURN_ON_FAILURE(USMFree(CLContext, HostAlloc));
+        CL_RETURN_ON_FAILURE(clReleaseEvent(HostCopyEvent));
+        CL_RETURN_ON_FAILURE(clReleaseCommandQueue(MissingQueue));
+        if (phEvent) {
+          try {
+            auto UREvent = std::make_unique<ur_event_handle_t_>(
+                FinalCopyEvent, hQueue->Context, hQueue);
+            *phEvent = UREvent.release();
+          } catch (std::bad_alloc &) {
+            return UR_RESULT_ERROR_OUT_OF_RESOURCES;
+          } catch (...) {
+            return UR_RESULT_ERROR_UNKNOWN;
+          }
+        } else {
+          CL_RETURN_ON_FAILURE(clReleaseEvent(FinalCopyEvent));
+        }
+      } else {
+        if (phEvent) {
+          try {
+            auto UREvent = std::make_unique<ur_event_handle_t_>(
+                FinalCopyEvent, hQueue->Context, hQueue);
+            *phEvent = UREvent.release();
+          } catch (std::bad_alloc &) {
+            return UR_RESULT_ERROR_OUT_OF_RESOURCES;
+          } catch (...) {
+            return UR_RESULT_ERROR_UNKNOWN;
+          }
+          // We are going to release this event in our callback so we need to
+          // retain if the user wants a copy.
+          CL_RETURN_ON_FAILURE(clRetainEvent(FinalCopyEvent));
+        }
+
+        // This self destructs taking the event and allocation with it.
+        auto DeleterInfo = new AllocDeleterCallbackInfoUSMWithQueue(
+            USMFree, CLContext, HostAlloc, MissingQueue);
+
+        CLErr = clSetEventCallback(
+            HostCopyEvent, CL_COMPLETE,
+            AllocDeleterCallback<AllocDeleterCallbackInfoUSMWithQueue>,
+            DeleterInfo);
+
+        if (CLErr != CL_SUCCESS) {
+          // We can attempt to recover gracefully by attempting to wait for the
+          // copy to finish and deleting the info struct here.
+          clWaitForEvents(1, &HostCopyEvent);
+          delete DeleterInfo;
+          clReleaseEvent(HostCopyEvent);
+          CL_RETURN_ON_FAILURE(CLErr);
+        }
+      }
+    } else {
+      cl_event Event;
+      std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
+      for (uint32_t i = 0; i < numEventsInWaitList; i++) {
+        CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
+      }
+      CL_RETURN_ON_FAILURE(USMMemcpy(
+          hQueue->CLQueue, blocking, pDst, pSrc, size, numEventsInWaitList,
+          CLWaitEvents.data(), ifUrEvent(phEvent, Event)));
+      UR_RETURN_ON_FAILURE(
+          createUREvent(Event, hQueue->Context, hQueue, phEvent));
+    }
   }
 
   return UR_RESULT_SUCCESS;
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMPrefetch(
-    ur_queue_handle_t hQueue, [[maybe_unused]] const void *pMem,
-    [[maybe_unused]] size_t size,
-    [[maybe_unused]] ur_usm_migration_flags_t flags,
-    uint32_t numEventsInWaitList, const ur_event_handle_t *phEventWaitList,
-    ur_event_handle_t *phEvent) {
-  cl_event Event;
+    ur_queue_handle_t hQueue, const void *pMem, size_t size,
+    ur_usm_migration_flags_t flags, uint32_t numEventsInWaitList,
+    const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
+  const auto Platform = hQueue->Context->getPlatform();
+
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
   for (uint32_t i = 0; i < numEventsInWaitList; i++) {
     CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
   }
-  CL_RETURN_ON_FAILURE(clEnqueueMarkerWithWaitList(
-      hQueue->CLQueue, numEventsInWaitList, CLWaitEvents.data(),
-      ifUrEvent(phEvent, Event)));
+
+  cl_event Event;
+  if (Platform->UseUnifiedSVM) {
+    CL_RETURN_ON_FAILURE(clEnqueueSVMMigrateMem(
+        hQueue->CLQueue, 1, &pMem, &size, flags, numEventsInWaitList,
+        CLWaitEvents.data(), ifUrEvent(phEvent, Event)));
+  } else {
+    /*
+    // Use this once impls support it.
+    cl_context CLContext = hQueue->Context;
+
+    clEnqueueMigrateMemINTEL_fn FuncPtr;
+    ur_result_t Err =
+    cl_ext::getExtFuncFromContext<clEnqueueMigrateMemINTEL_fn>( CLContext,
+    "clEnqueueMigrateMemINTEL", &FuncPtr);
+
+    ur_result_t RetVal;
+    if (Err != UR_RESULT_SUCCESS) {
+      RetVal = Err;
+    } else {
+      RetVal = map_cl_error_to_ur(
+          FuncPtr(hQueue->CLQueue, pMem, size, flags,
+                  numEventsInWaitList,
+                  reinterpret_cast<const cl_event *>(phEventWaitList),
+                  reinterpret_cast<cl_event *>(phEvent)));
+    }
+    */
+    CL_RETURN_ON_FAILURE(clEnqueueMarkerWithWaitList(
+        hQueue->CLQueue, numEventsInWaitList, CLWaitEvents.data(),
+        ifUrEvent(phEvent, Event)));
+  }
+
   UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
-  /*
-  // Use this once impls support it.
-  // Have to look up the context from the kernel
-  cl_context CLContext = hQueue->Context;
-
-  clEnqueueMigrateMemINTEL_fn FuncPtr;
-  ur_result_t Err =
-  cl_ext::getExtFuncFromContext<clEnqueueMigrateMemINTEL_fn>( CLContext,
-  "clEnqueueMigrateMemINTEL", &FuncPtr);
-
-  ur_result_t RetVal;
-  if (Err != UR_RESULT_SUCCESS) {
-    RetVal = Err;
-  } else {
-    RetVal = map_cl_error_to_ur(
-        FuncPtr(hQueue->CLQueue, pMem, size, flags,
-                numEventsInWaitList,
-                reinterpret_cast<const cl_event *>(phEventWaitList),
-                reinterpret_cast<cl_event *>(phEvent)));
-  }
-  */
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMAdvise(
@@ -666,7 +709,6 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMAdvise(
   return UR_RESULT_SUCCESS;
   /*
   // Change to use this once drivers support it.
-  // Have to look up the context from the kernel
   cl_context CLContext = hQueue->Context;
 
   clEnqueueMemAdviseINTEL_fn FuncPtr;
@@ -751,7 +793,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueUSMMemcpy2D(
   return UR_RESULT_SUCCESS;
 }
 
-ur_usm_type_t
+static ur_usm_type_t
 mapCLUSMTypeToUR(const cl_unified_shared_memory_type_intel &Type) {
   switch (Type) {
   case CL_MEM_TYPE_HOST_INTEL:
@@ -766,10 +808,22 @@ mapCLUSMTypeToUR(const cl_unified_shared_memory_type_intel &Type) {
   }
 }
 
+static ur_usm_type_t mapCLSVMTypeIndexToUR(ur_platform_handle_t Platform,
+                                           int SVMTypeIndex) {
+  if (SVMTypeIndex == Platform->DeviceSVMTypeIndex) {
+    return UR_USM_TYPE_DEVICE;
+  } else if (SVMTypeIndex == Platform->SingleDeviceSharedSVMTypeIndex) {
+    return UR_USM_TYPE_SHARED;
+  } else if (SVMTypeIndex == Platform->HostSVMTypeIndex) {
+    return UR_USM_TYPE_HOST;
+  }
+  return UR_USM_TYPE_UNKNOWN;
+}
+
 UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
     ur_context_handle_t Context, const void *pMem, ur_usm_alloc_info_t propName,
     size_t propSize, void *pPropValue, size_t *pPropSizeRet) {
-  auto Platform = Context->getPlatform();
+  const auto Platform = Context->getPlatform();
   cl_int ClErr = CL_SUCCESS;
   size_t CheckPropSize = 0;
 
@@ -799,22 +853,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
       return UR_RESULT_ERROR_UNSUPPORTED_ENUMERATION;
     }
     UrReturnHelper ReturnValue(propSize, pPropValue, pPropSizeRet);
+    if (propName == UR_USM_ALLOC_INFO_DEVICE) { // TODO: This looks incorrect!
+      return ReturnValue(Context->Devices[0]);
+    }
     ClErr = FuncPtr(Context->CLContext, nullptr, pMem, PropNameCL, propSize,
                     pPropValue, &CheckPropSize);
-    if (propName == UR_USM_ALLOC_INFO_TYPE && pPropValue &&
-        propSize == sizeof(cl_uint)) {
-      // TODO: Consider making the platform SVM type indices unsigned?
-      auto SVMTypeIndex = *static_cast<const cl_int *>(pPropValue);
-      if (SVMTypeIndex == Platform->DeviceSVMTypeIndex) {
-        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_DEVICE;
-      } else if (SVMTypeIndex == Platform->SingleDeviceSharedSVMTypeIndex) {
-        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_SHARED;
-      } else if (SVMTypeIndex == Platform->HostSVMTypeIndex) {
-        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_HOST;
-      } else {
-        *static_cast<ur_usm_type_t *>(pPropValue) = UR_USM_TYPE_UNKNOWN;
-      }
-    }
   } else {
     clGetMemAllocInfoINTEL_fn FuncPtr = nullptr;
     cl_context CLContext = Context->CLContext;
@@ -857,9 +900,17 @@ UR_APIEXPORT ur_result_t UR_APICALL urUSMGetMemAllocInfo(
     *pPropSizeRet = CheckPropSize;
   }
 
-  if (pPropValue && propName == UR_USM_ALLOC_INFO_TYPE) {
-    *static_cast<ur_usm_type_t *>(pPropValue) = mapCLUSMTypeToUR(
-        *static_cast<cl_unified_shared_memory_type_intel *>(pPropValue));
+  if (propName == UR_USM_ALLOC_INFO_TYPE && pPropValue &&
+      propSize == sizeof(cl_uint)) {
+    if (Platform->UseUnifiedSVM) {
+      // TODO: Consider making the platform SVM type indices unsigned?
+      auto SVMTypeIndex = *static_cast<const cl_int *>(pPropValue);
+      auto URAllocType = mapCLSVMTypeIndexToUR(Platform, SVMTypeIndex);
+      *static_cast<ur_usm_type_t *>(pPropValue) = URAllocType;
+    } else {
+      *static_cast<ur_usm_type_t *>(pPropValue) = mapCLUSMTypeToUR(
+          *static_cast<cl_unified_shared_memory_type_intel *>(pPropValue));
+    }
   }
 
   return UR_RESULT_SUCCESS;
